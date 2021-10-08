@@ -8,9 +8,11 @@ use chrono::NaiveDateTime;
 use egg_mode::KeyPair;
 use r_cache::cache::Cache;
 use teloxide::{prelude::*, utils::command::BotCommand};
+use tokio::sync::Mutex;
 
 use crate::{
     follow_model,
+    twitter_subscriber::TwitterSubscriber,
     user_model::{self, User},
     DbPool,
 };
@@ -44,6 +46,7 @@ pub struct TelegramBot {
     pub cache: Cache<i64, egg_mode::KeyPair>,
     pub admin_id: i64,
     pub twitter_token: KeyPair,
+    pub twitter_subscriber: Option<Arc<Mutex<TwitterSubscriber>>>,
 }
 
 impl TelegramBot {
@@ -64,7 +67,12 @@ impl TelegramBot {
             db_pool: db_pool,
             admin_id: admin_id,
             twitter_token: twitter_token,
+            twitter_subscriber: None,
         }
+    }
+
+    pub fn set_twitter_subscriber(&mut self, subscriber: Option<Arc<Mutex<TwitterSubscriber>>>) {
+        self.twitter_subscriber = subscriber;
     }
 }
 
@@ -177,21 +185,24 @@ async fn answer(
                 serde_json::from_str(&user.twitter_access_token.unwrap()).unwrap();
             let twitter_user = egg_mode::user::show(x_twitter_user_id as u64, &token).await?;
             let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
-            let res = follow_model::create_follow(
-                &tg_bot.db_pool.get().unwrap(),
-                follow_model::Follow {
-                    id: None,
-                    user_id: user.id,
-                    twitter_user_id: x_twitter_user_id,
-                    twitter_username: twitter_user.screen_name.clone(),
-                    created_at: NaiveDateTime::from_timestamp(
-                        now.as_secs() as i64,
-                        now.subsec_nanos(),
-                    ),
-                },
-            );
+            let follow = follow_model::Follow {
+                id: None,
+                user_id: user.id,
+                twitter_user_id: x_twitter_user_id,
+                twitter_username: twitter_user.screen_name.clone(),
+                created_at: NaiveDateTime::from_timestamp(now.as_secs() as i64, now.subsec_nanos()),
+            };
+            let res = follow_model::create_follow(&tg_bot.db_pool.get().unwrap(), follow.clone());
             cx.answer(match res {
                 Ok(count) => {
+                    tg_bot
+                        .twitter_subscriber
+                        .as_ref()
+                        .unwrap()
+                        .lock()
+                        .await
+                        .add_follow(follow)
+                        .await?;
                     format!("添加成功 {:?} 条记录", count)
                 }
                 Err(err) => {
