@@ -2,9 +2,12 @@ use std::{env, sync::Arc, time::Duration};
 
 use diesel::{ExpressionMethods, GroupByDsl, QueryDsl, RunQueryDsl};
 use dotenv::dotenv;
+use egg_mode::stream::StreamMessage;
+use log::error;
 use r_cache::cache::Cache;
-use teloxide::prelude::*;
-use tokio::sync::Mutex;
+use teloxide::{adaptors::AutoSend, prelude::Requester, Bot};
+use tokio::sync::{mpsc, RwLock};
+
 use twitter2telegram::{
     follow_model::Follow, schema::follows::dsl::*, schema::users::dsl::*, telegram_bot,
     twitter_subscriber::TwitterSubscriber, user_model, DbPool,
@@ -34,31 +37,67 @@ async fn main() {
         env::var("TELEGRAM_BOT_TOKEN").unwrap(),
     );
 
-    let twitter_to_tg_bridge = tg_bot.bot.clone();
-    let ts = Arc::new(Mutex::new(TwitterSubscriber::new(
-        twitter_to_tg_bridge,
-        db_pool.clone(),
-    )));
+    let (tx, rx) = mpsc::channel::<StreamMessage>(100);
+    let ts = Arc::new(RwLock::new(TwitterSubscriber::new(tx)));
 
-    tg_bot.set_twitter_subscriber(Some(ts.clone()));
+    let ts_clone = ts.clone();
+    tg_bot.set_twitter_subscriber(Some(ts_clone));
 
+    let bot_clone = tg_bot.bot.clone();
+    let ts_clone = ts.clone();
     tokio::spawn(async {
-        run_twitter_subscriber(ts, db_pool).await;
+        run_twitter_subscriber(bot_clone, ts_clone, db_pool).await;
     });
+
+    let bot_clone = tg_bot.bot.clone();
+    let ts_clone = ts.clone();
+    tokio::spawn(async move { TwitterSubscriber::forward_tweet(ts_clone, bot_clone, rx).await });
 
     telegram_bot::run(Arc::new(tg_bot)).await;
 }
 
-async fn run_twitter_subscriber(ts: Arc<Mutex<TwitterSubscriber>>, db_pool: DbPool) {
+async fn run_twitter_subscriber(
+    tg_bot: AutoSend<Bot>,
+    ts: Arc<RwLock<TwitterSubscriber>>,
+    db_pool: DbPool,
+) {
     // 取到所有 twitter token 有效的用户
     let user_vec = users
         .filter(twitter_status.eq(true))
         .load::<User>(&db_pool.get().unwrap())
         .unwrap();
+    let mut ts_writer = ts.write().await;
     for u in &user_vec {
-        TwitterSubscriber::add_token(ts.clone(), u.twitter_access_token.as_ref().unwrap())
+        if let Err(e) = ts_writer
+            .add_token(u.twitter_access_token.as_ref().unwrap())
             .await
-            .unwrap();
+        {
+            error!("add twitter token: {:?}", e);
+            if e.to_string().contains("Invalid or expired token") {
+                user_model::update_user(
+                    &db_pool.get().unwrap(),
+                    User {
+                        twitter_status: false,
+                        ..u.clone()
+                    },
+                )
+                .unwrap();
+                if tg_bot
+                    .send_message(u.id, format!("Twitter Token 已失效 {:?}", e))
+                    .await
+                    .is_err()
+                {
+                    user_model::update_user(
+                        &db_pool.get().unwrap(),
+                        User {
+                            telegram_status: false,
+                            ..u.clone()
+                        },
+                    )
+                    .unwrap();
+                }
+            }
+        }
     }
     let user_id_vec = user_vec.iter().map(|u| u.id).collect::<Vec<i64>>();
 
@@ -69,14 +108,19 @@ async fn run_twitter_subscriber(ts: Arc<Mutex<TwitterSubscriber>>, db_pool: DbPo
         .load::<Follow>(&db_pool.get().unwrap())
         .unwrap();
 
-    // 加入监听
-    let mut ts_w = ts.lock().await;
-    for f in follow_vec {
-        ts_w.add_follow(f).await.unwrap();
-    }
+    drop(ts_writer);
 
-    // 1. 遇到 token 失效的用户，取消监听他们 follow 的 id
-    // 2. 遇到新的 token 进入，加入到服务中的 token 列表
-    // 3. 遇到新的 follow id，按有效 token 监控的 id 数量正序选择第一个 token 加入监听
-    // 4. 遇到取消 follow id，检查这个 id follow 的人数，如果为 0 则取消，否则不做处理
+    // 加入监听
+    for f in follow_vec {
+        let mut ts_writer2 = ts.write().await;
+        ts_writer2.add_follow(f).await.unwrap();
+        drop(ts_writer2);
+        // 更新监控
+        for u in &user_vec {
+            TwitterSubscriber::subscribe(ts.clone(), &u.twitter_access_token.as_ref().unwrap())
+                .await
+                .unwrap();
+        }
+        tokio::time::sleep(Duration::from_secs(3)).await;
+    }
 }

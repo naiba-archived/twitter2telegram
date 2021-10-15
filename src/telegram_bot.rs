@@ -8,7 +8,7 @@ use chrono::NaiveDateTime;
 use egg_mode::KeyPair;
 use r_cache::cache::Cache;
 use teloxide::{prelude::*, utils::command::BotCommand};
-use tokio::sync::Mutex;
+use tokio::sync::RwLock;
 
 use crate::{
     follow_model,
@@ -24,15 +24,15 @@ enum Command {
     Help,
     #[command(description = "获取推特授权链接")]
     GetTwitterAuthURL,
-    #[command(description = "输入推特授权码(6位数字)")]
+    #[command(description = "后加推特授权码，6位数字")]
     SetTwitterVerifyCode(String),
-    #[command(description = "订阅推特用户，可以从 tweeterid.com 找到用户ID")]
+    #[command(description = "后加 twitter id，订阅推特用户，可以从 tweeterid.com 找到用户ID")]
     FollowTwitterID(i64),
-    #[command(description = "取消订阅推特用户")]
+    #[command(description = "后加 twitter id，取消订阅推特用户")]
     UnfollowTwitterID(i64),
     #[command(description = "列出订阅的推特用户")]
     ListFollowedTwitterID,
-    #[command(description = "添加用户(6位数字)", parse_with = "split")]
+    #[command(description = "[管理]添加用户", parse_with = "split")]
     AddUser {
         telegram_id: i64,
         custom_label: String,
@@ -46,7 +46,7 @@ pub struct TelegramBot {
     pub cache: Cache<i64, egg_mode::KeyPair>,
     pub admin_id: i64,
     pub twitter_token: KeyPair,
-    pub twitter_subscriber: Option<Arc<Mutex<TwitterSubscriber>>>,
+    pub twitter_subscriber: Option<Arc<RwLock<TwitterSubscriber>>>,
 }
 
 impl TelegramBot {
@@ -71,7 +71,7 @@ impl TelegramBot {
         }
     }
 
-    pub fn set_twitter_subscriber(&mut self, subscriber: Option<Arc<Mutex<TwitterSubscriber>>>) {
+    pub fn set_twitter_subscriber(&mut self, subscriber: Option<Arc<RwLock<TwitterSubscriber>>>) {
         self.twitter_subscriber = subscriber;
     }
 }
@@ -90,12 +90,12 @@ async fn answer(
 
     let user_pre_check = || async {
         if user.is_none() {
-            let _ = cx
-                .answer(format!(
-                    "用户(telegramId:{:?})未授权，请联系管理员添加权限",
-                    sender.id
-                ))
-                .await;
+            cx.answer(format!(
+                "用户(telegramId:{:?})未授权，请联系管理员添加权限",
+                sender.id
+            ))
+            .await
+            .unwrap();
             return false;
         };
         true
@@ -103,7 +103,7 @@ async fn answer(
 
     let admin_pre_check = || async {
         if !sender.id.eq(&tg_bot.admin_id) {
-            let _ = cx.answer("您不是管理员").await;
+            cx.answer("您不是管理员").await.unwrap();
             return false;
         };
         true
@@ -154,14 +154,18 @@ async fn answer(
             )
             .await?;
             let user = user.unwrap();
+            let token_str = serde_json::to_string(&token).unwrap();
             let res = user_model::update_user(
                 &tg_bot.db_pool.get().unwrap(),
                 User {
-                    twitter_access_token: Some(serde_json::to_string(&token).unwrap()),
+                    twitter_access_token: Some(token_str.clone()),
                     twitter_status: true,
                     ..user
                 },
             );
+            let mut ts_write = tg_bot.twitter_subscriber.as_ref().unwrap().write().await;
+            ts_write.add_token(&token_str).await?;
+            drop(ts_write);
             cx.answer(match res {
                 Ok(count) => {
                     format!("更新 Twitter 信息成功，影响 {:?} 条记录", count)
@@ -195,14 +199,22 @@ async fn answer(
             let res = follow_model::create_follow(&tg_bot.db_pool.get().unwrap(), follow.clone());
             cx.answer(match res {
                 Ok(count) => {
-                    tg_bot
+                    let token = tg_bot
                         .twitter_subscriber
                         .as_ref()
                         .unwrap()
-                        .lock()
+                        .write()
                         .await
                         .add_follow(follow)
                         .await?;
+                    if token.ne("") {
+                        TwitterSubscriber::subscribe(
+                            tg_bot.twitter_subscriber.as_ref().unwrap().clone(),
+                            &token,
+                        )
+                        .await
+                        .unwrap();
+                    };
                     format!("添加成功 {:?} 条记录", count)
                 }
                 Err(err) => {
@@ -215,11 +227,20 @@ async fn answer(
             if !user_pre_check().await {
                 return Ok(());
             };
-            let res = follow_model::unfollow(
-                &tg_bot.db_pool.get().unwrap(),
-                user.unwrap().id,
-                x_twitter_user_id,
-            );
+            let user = user.unwrap();
+            if !user.twitter_status {
+                cx.answer("请先获取推特授权链接并授权").await?;
+                return Ok(());
+            };
+            let res =
+                follow_model::unfollow(&tg_bot.db_pool.get().unwrap(), user.id, x_twitter_user_id);
+            let ts = tg_bot.twitter_subscriber.as_ref().unwrap();
+            let mut ts_write = ts.write().await;
+            let token = ts_write.remove_follow_id(user.id, x_twitter_user_id);
+            drop(ts_write);
+            if token.ne("") {
+                TwitterSubscriber::subscribe(ts.clone(), &token).await.unwrap();
+            };
             cx.answer(match res {
                 Ok(count) => {
                     format!("取消订阅成功 {:?} 条记录", count)
@@ -234,10 +255,12 @@ async fn answer(
             if !user_pre_check().await {
                 return Ok(());
             };
-            let res = follow_model::get_follows_by_user_id(
-                &tg_bot.db_pool.get().unwrap(),
-                user.unwrap().id,
-            );
+            let user = user.unwrap();
+            if !user.twitter_status {
+                cx.answer("请先获取推特授权链接并授权").await?;
+                return Ok(());
+            };
+            let res = follow_model::get_follows_by_user_id(&tg_bot.db_pool.get().unwrap(), user.id);
             if res.is_err() {
                 cx.answer(format!("失败，错误 {:?}", res.err())).await?;
                 return Ok(());

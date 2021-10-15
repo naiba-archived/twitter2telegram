@@ -4,7 +4,7 @@ use chrono::NaiveDateTime;
 use diesel::prelude::*;
 use diesel::{QueryDsl, Queryable, RunQueryDsl, SqliteConnection};
 
-#[derive(Queryable)]
+#[derive(Queryable, Debug, Clone)]
 pub struct User {
     pub id: i64,
     pub label: String,

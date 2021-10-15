@@ -8,7 +8,7 @@ pub mod user_model;
 extern crate diesel;
 
 use diesel::{
-    r2d2::{ConnectionManager, Pool, PooledConnection},
+    r2d2::{ConnectionManager, Pool},
     sqlite::SqliteConnection,
 };
 
