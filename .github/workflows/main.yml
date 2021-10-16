@@ -53,7 +53,6 @@ jobs:
       - name: Build targets
         run: |
           export RUSTC_WRAPPER="$HOME/.local/bin/sccache"
-          export OPENSSL_DIR="/opt/openssl"
           cargo build --release
       - name: Print sccache stats
         run: sccache --show-stats
