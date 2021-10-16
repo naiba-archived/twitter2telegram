@@ -18,21 +18,25 @@ use crate::{
 };
 
 #[derive(BotCommand)]
-#[command(rename = "lowercase", description = "订阅推特到TG的机器人")]
+#[command(
+    description = "forward tweets to telegram bot, all params should be appended to the command, separated by a space, like `/SetTwitterVerifyCode 1234567`, first you should do step 1 --> 2"
+)]
 enum Command {
-    #[command(description = "命令菜单 按 1 2 3 步走")]
+    #[command(description = "Menu")]
     Start,
-    #[command(description = "(1)获取推特授权链接")]
+    #[command(description = "Step1: get twitter authorize url")]
     GetTwitterAuthURL,
-    #[command(description = "(2)后加推特授权码，6位数字")]
+    #[command(description = "Step2: set twitter authorize code (param: a 7-digit number)")]
     SetTwitterVerifyCode(String),
-    #[command(description = "(3)后加 twitter id，订阅推特用户，可以从 tweeterid.com 找到用户ID")]
+    #[command(
+        description = "Subscribe to Twitter users by Twitter ID, which can be found at tweeterid.com (param: a huge number)"
+    )]
     FollowTwitterID(i64),
-    #[command(description = "后加 twitter id，取消订阅推特用户")]
+    #[command(description = "Unsubscribe from Twitter ID (param: a huge number)")]
     UnfollowTwitterID(i64),
-    #[command(description = "列出订阅的推特用户")]
+    #[command(description = "List subscribed Twitter users")]
     ListFollowedTwitterID,
-    #[command(description = "(owner)添加用户", parse_with = "split")]
+    #[command(description = "(OWNER) Add user", parse_with = "split")]
     AddUser {
         telegram_id: i64,
         custom_label: String,
@@ -44,7 +48,7 @@ pub struct TelegramBot {
     pub name: String,
     pub db_pool: DbPool,
     pub cache: Cache<i64, egg_mode::KeyPair>,
-    pub admin_id: i64,
+    pub telegram_admin_id: i64,
     pub twitter_token: KeyPair,
     pub twitter_subscriber: Option<Arc<RwLock<TwitterSubscriber>>>,
 }
@@ -54,7 +58,7 @@ impl TelegramBot {
         name: String,
         cache: Cache<i64, egg_mode::KeyPair>,
         db_pool: DbPool,
-        admin_id: i64,
+        telegram_admin_id: i64,
         twitter_token: KeyPair,
         tg_token: String,
     ) -> Self {
@@ -65,7 +69,7 @@ impl TelegramBot {
             name: name,
             cache: cache,
             db_pool: db_pool,
-            admin_id: admin_id,
+            telegram_admin_id,
             twitter_token: twitter_token,
             twitter_subscriber: None,
         }
@@ -102,7 +106,7 @@ async fn answer(
     };
 
     let admin_pre_check = || async {
-        if !sender.id.eq(&tg_bot.admin_id) {
+        if !sender.id.eq(&tg_bot.telegram_admin_id) {
             cx.answer("您不是管理员").await.unwrap();
             return false;
         };
@@ -239,7 +243,9 @@ async fn answer(
             let token = ts_write.remove_follow_id(user.id, x_twitter_user_id);
             drop(ts_write);
             if token.ne("") {
-                TwitterSubscriber::subscribe(ts.clone(), &token).await.unwrap();
+                TwitterSubscriber::subscribe(ts.clone(), &token)
+                    .await
+                    .unwrap();
             };
             cx.answer(match res {
                 Ok(count) => {

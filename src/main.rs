@@ -22,7 +22,7 @@ async fn main() {
         twitter2telegram::establish_connection(&env::var("DATABASE_URL").unwrap());
     let cache_instance: Cache<i64, egg_mode::KeyPair> =
         Cache::new(Some(Duration::from_secs(5 * 60)));
-    let tg_admin_id: i64 = env::var("ADMIN_ID").unwrap().parse::<i64>().unwrap();
+    let telegram_admin_id: i64 = env::var("TELEGRAM_ADMIN_ID").unwrap().parse::<i64>().unwrap();
     let twitter_app_token: egg_mode::KeyPair = egg_mode::KeyPair::new(
         env::var("TWITTER_KEY").unwrap(),
         env::var("TWITTER_SECRET").unwrap(),
@@ -32,7 +32,7 @@ async fn main() {
         "SubscribeTweets".to_string(),
         cache_instance,
         db_pool.clone(),
-        tg_admin_id,
+        telegram_admin_id,
         twitter_app_token,
         env::var("TELEGRAM_BOT_TOKEN").unwrap(),
     );
