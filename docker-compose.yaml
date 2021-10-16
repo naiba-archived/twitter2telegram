@@ -1,0 +1,9 @@
+version: "3.3"
+
+services:
+  dashboard:
+    image: ghcr.io/naiba/t2t_bot:latest
+    restart: always
+    volumes:
+      - ./data:/bot/data
+      - ./.env:/bot/.env:ro
