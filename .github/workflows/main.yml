@@ -26,8 +26,6 @@ jobs:
           LINK: https://github.com/mozilla/sccache/releases/download
           SCCACHE_VERSION: v0.2.15
         run: |
-          sudo apt install -y pkg-config libssl-dev
-          rustup target add x86_64-unknown-linux-musl
           export SCCACHE_FILE=sccache-$SCCACHE_VERSION-x86_64-unknown-linux-musl
           mkdir -p $HOME/.local/bin
           curl -L "$LINK/$SCCACHE_VERSION/$SCCACHE_FILE.tar.gz" | tar xz
@@ -56,7 +54,7 @@ jobs:
         run: |
           export RUSTC_WRAPPER="$HOME/.local/bin/sccache"
           export OPENSSL_DIR="/opt/openssl"
-          cargo build --target x86_64-unknown-linux-musl --release
+          cargo build --release
       - name: Print sccache stats
         run: sccache --show-stats
       - name: Stop sccache server

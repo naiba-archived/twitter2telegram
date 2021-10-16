@@ -1,10 +1,11 @@
-FROM alpine:latest
+FROM ubuntu:latest
 ENV TZ="Asia/Shanghai"
 
-RUN apk --no-cache --no-progress add \
-    ca-certificates tzdata \
-    cp "/usr/share/zoneinfo/$TZ" /etc/localtime && \
-    echo "$TZ" > /etc/timezone
+RUN apt update && DEBIAN_FRONTEND="noninteractive" apt install -y ca-certificates tzdata \
+    libsqlite3-dev && \
+    update-ca-certificates && \
+    ln -fs /usr/share/zoneinfo/$TZ /etc/localtime && \
+    dpkg-reconfigure --frontend noninteractive tzdata
 
 WORKDIR /bot
 COPY ./target/release/twitter2telegram ./bot
