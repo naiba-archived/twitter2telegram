@@ -20,19 +20,19 @@ use crate::{
 #[derive(BotCommand)]
 #[command(rename = "lowercase", description = "订阅推特到TG的机器人")]
 enum Command {
-    #[command(description = "帮助命令")]
-    Help,
-    #[command(description = "获取推特授权链接")]
+    #[command(description = "命令菜单 按 1 2 3 步走")]
+    Start,
+    #[command(description = "(1)获取推特授权链接")]
     GetTwitterAuthURL,
-    #[command(description = "后加推特授权码，6位数字")]
+    #[command(description = "(2)后加推特授权码，6位数字")]
     SetTwitterVerifyCode(String),
-    #[command(description = "后加 twitter id，订阅推特用户，可以从 tweeterid.com 找到用户ID")]
+    #[command(description = "(3)后加 twitter id，订阅推特用户，可以从 tweeterid.com 找到用户ID")]
     FollowTwitterID(i64),
     #[command(description = "后加 twitter id，取消订阅推特用户")]
     UnfollowTwitterID(i64),
     #[command(description = "列出订阅的推特用户")]
     ListFollowedTwitterID,
-    #[command(description = "[管理]添加用户", parse_with = "split")]
+    #[command(description = "(owner)添加用户", parse_with = "split")]
     AddUser {
         telegram_id: i64,
         custom_label: String,
@@ -110,7 +110,7 @@ async fn answer(
     };
 
     match command {
-        Command::Help => {
+        Command::Start => {
             if !user_pre_check().await {
                 return Ok(());
             };
