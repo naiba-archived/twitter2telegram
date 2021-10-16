@@ -55,7 +55,7 @@ jobs:
       - name: Build targets
         run: |
           export RUSTC_WRAPPER="$HOME/.local/bin/sccache"
-          cargo build --release
+          cargo build --target x86_64-unknown-linux-musl --release
       - name: Print sccache stats
         run: sccache --show-stats
       - name: Stop sccache server
