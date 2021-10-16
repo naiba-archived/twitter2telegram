@@ -4,6 +4,7 @@ RUN apk --no-cache --no-progress add \
     ca-certificates \
     sqlite-dev \
     libgcc \
+    libc6-compat \
     tzdata && \
     cp "/usr/share/zoneinfo/$TZ" /etc/localtime && \
     echo "$TZ" > /etc/timezone
