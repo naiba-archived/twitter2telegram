@@ -29,7 +29,7 @@ impl TwitterSubscriber {
     fn get_first_media_url(t: &Tweet) -> String {
         match &t.entities.media {
             Some(media) => match media.first() {
-                Some(m) => format!("\npic: {}", m.media_url_https.clone()),
+                Some(m) => format!("\nmedia: {}", m.media_url_https.clone()),
                 None => "".to_string(),
             },
             None => "".to_string(),
@@ -155,10 +155,10 @@ impl TwitterSubscriber {
         let hash = self.follow_map.get(&twitter_id).unwrap();
         let ctx = self.token_map.get_mut(hash).unwrap();
         let index = ctx
-        .follows
-        .iter()
-        .position(|f| f.eq(&(twitter_id as u64)))
-        .unwrap();
+            .follows
+            .iter()
+            .position(|f| f.eq(&(twitter_id as u64)))
+            .unwrap();
         ctx.follows.remove(index);
         self.follow_map.remove(&twitter_id);
         ctx.end_tx.take().unwrap().send(()).unwrap();

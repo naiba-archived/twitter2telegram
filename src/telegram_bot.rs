@@ -19,12 +19,12 @@ use crate::{
 
 #[derive(BotCommand)]
 #[command(
-    description = "forward tweets to telegram bot, all params should be appended to the command, separated by a space, like `/SetTwitterVerifyCode 1234567`, first you should do step 1 --> 2"
+    description = "forward tweets to telegram bot, all params should be appended to the command, separated by a space, like `/SetTwitterVerifyCode 1234567`, first you should do step 1 --> 2\n\n"
 )]
 enum Command {
     #[command(rename = "lowercase", description = "Menu")]
     Start,
-    #[command(description = "Step1: get twitter authorize url")]
+    #[command(description = "Step1: get twitter authorization URL")]
     GetTwitterAuthURL,
     #[command(description = "Step2: set twitter authorize code (param: a 7-digit number)")]
     SetTwitterVerifyCode(String),
@@ -95,7 +95,7 @@ async fn answer(
     let user_pre_check = || async {
         if user.is_none() {
             cx.answer(format!(
-                "用户(telegramId:{:?})未授权，请联系管理员添加权限",
+                "User(telegramId:{:?}) Not authorized, please contact administrator to add permissions",
                 sender.id
             ))
             .await
@@ -107,7 +107,7 @@ async fn answer(
 
     let admin_pre_check = || async {
         if !sender.id.eq(&tg_bot.telegram_admin_id) {
-            cx.answer("您不是管理员").await.unwrap();
+            cx.answer("You are not an admin").await.unwrap();
             return false;
         };
         true
@@ -143,12 +143,14 @@ async fn answer(
                 return Ok(());
             };
             if !code.trim().len().eq(&7) {
-                cx.answer("7位数字授权码不能为空").await?;
+                cx.answer("The 7-digit authorization code cannot be empty")
+                    .await?;
                 return Ok(());
             }
             let request_token = tg_bot.cache.get(&user.as_ref().unwrap().id).await;
             if request_token.is_none() {
-                cx.answer("请先获取推特授权链接并授权").await?;
+                cx.answer("Please get the Twitter authorization link and authorize first")
+                    .await?;
                 return Ok(());
             }
             let (token, _, _) = egg_mode::auth::access_token(
@@ -172,10 +174,13 @@ async fn answer(
             drop(ts_write);
             cx.answer(match res {
                 Ok(count) => {
-                    format!("更新 Twitter 信息成功，影响 {:?} 条记录", count)
+                    format!(
+                        "Update Twitter messages successfully, affecting {:?} records",
+                        count
+                    )
                 }
                 Err(err) => {
-                    format!("失败，错误 {:?}", err)
+                    format!("Failure, error {:?}", err)
                 }
             })
             .await?
@@ -186,7 +191,8 @@ async fn answer(
             };
             let user = user.unwrap();
             if !user.twitter_status {
-                cx.answer("请先获取推特授权链接并授权").await?;
+                cx.answer("Please get the Twitter authorization link and authorize first")
+                    .await?;
                 return Ok(());
             };
             let token: egg_mode::Token =
@@ -219,10 +225,10 @@ async fn answer(
                         .await
                         .unwrap();
                     };
-                    format!("添加成功 {:?} 条记录", count)
+                    format!("Added successfully {:?} Records", count)
                 }
                 Err(err) => {
-                    format!("失败，错误 {:?}", err)
+                    format!("Failure, error {:?}", err)
                 }
             })
             .await?
@@ -233,7 +239,8 @@ async fn answer(
             };
             let user = user.unwrap();
             if !user.twitter_status {
-                cx.answer("请先获取推特授权链接并授权").await?;
+                cx.answer("Please get the Twitter authorization link and authorize first")
+                    .await?;
                 return Ok(());
             };
             let res =
@@ -249,10 +256,10 @@ async fn answer(
             };
             cx.answer(match res {
                 Ok(count) => {
-                    format!("取消订阅成功 {:?} 条记录", count)
+                    format!("Unsubscribe Success {:?} Records", count)
                 }
                 Err(err) => {
-                    format!("失败，错误 {:?}", err)
+                    format!("Failure, error {:?}", err)
                 }
             })
             .await?
@@ -263,16 +270,18 @@ async fn answer(
             };
             let user = user.unwrap();
             if !user.twitter_status {
-                cx.answer("请先获取推特授权链接并授权").await?;
+                cx.answer("Please get the Twitter authorization link and authorize first")
+                    .await?;
                 return Ok(());
             };
             let res = follow_model::get_follows_by_user_id(&tg_bot.db_pool.get().unwrap(), user.id);
             if res.is_err() {
-                cx.answer(format!("失败，错误 {:?}", res.err())).await?;
+                cx.answer(format!("Failure, error {:?}", res.err())).await?;
                 return Ok(());
             }
             let follow_vec = res.unwrap();
-            let mut msg = String::from("您目前订阅了以下账户：\n");
+            let mut msg =
+                String::from("You are currently subscribed to the following accounts.\n\n");
             follow_vec.iter().for_each(|f| {
                 msg.push_str(&format!(
                     "{}({:?})\n",
@@ -304,15 +313,15 @@ async fn answer(
                 },
             );
             cx.answer(format!(
-                "{}({:?}) 添加{}",
+                "{}({:?}) Add {}",
                 custom_label.clone(),
                 telegram_id,
                 match res {
                     Ok(count) => {
-                        format!("添加成功 {:?} 条记录", count)
+                        format!("Success {:?} Records", count)
                     }
                     Err(err) => {
-                        format!("失败，错误 {:?}", err)
+                        format!("Failure, error {:?}", err)
                     }
                 }
             ))
