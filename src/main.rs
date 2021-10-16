@@ -14,22 +14,40 @@ use twitter2telegram::{
 };
 use user_model::User;
 
+#[macro_use]
+extern crate diesel_migrations;
+
+embed_migrations!("./migrations");
+
 #[tokio::main]
 async fn main() {
     dotenv().ok();
 
     let db_pool: twitter2telegram::DbPool =
         twitter2telegram::establish_connection(&env::var("DATABASE_URL").unwrap());
+
+    let args: Vec<String> = std::env::args().collect();
+    if args.len() > 1 && args[1] == "migration" {
+        println!(
+            "migration {:?}",
+            diesel_migrations::run_pending_migrations(&db_pool.get().unwrap())
+        );
+        return;
+    }
+
     let cache_instance: Cache<i64, egg_mode::KeyPair> =
         Cache::new(Some(Duration::from_secs(5 * 60)));
-    let telegram_admin_id: i64 = env::var("TELEGRAM_ADMIN_ID").unwrap().parse::<i64>().unwrap();
+    let telegram_admin_id: i64 = env::var("TELEGRAM_ADMIN_ID")
+        .unwrap()
+        .parse::<i64>()
+        .unwrap();
     let twitter_app_token: egg_mode::KeyPair = egg_mode::KeyPair::new(
         env::var("TWITTER_KEY").unwrap(),
         env::var("TWITTER_SECRET").unwrap(),
     );
 
     let mut tg_bot = telegram_bot::TelegramBot::new(
-        "SubscribeTweets".to_string(),
+        "T2TBot".to_string(),
         cache_instance,
         db_pool.clone(),
         telegram_admin_id,

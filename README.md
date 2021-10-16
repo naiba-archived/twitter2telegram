@@ -1,3 +1,15 @@
-# 订阅机器人
+# T2T Bot
 
-单用户使用基本无问题，目前尚未细致处理多用户多 twitter token 与 follow 用户的调度。
+Forward tweets to telegram bot.
+
+**ALPHA** Single-user use is largely unproblematic, but the scheduling of multiple twitter tokens for multiple users and followers is not yet well handled.
+
+## Usage
+
+1. choose a folder to run your bot, like `mkdir some_bot && cd some_bot`
+2. create a data dir in your bot folder, `mkdir data`
+3. create a docker compose file, `wget https://raw.githubusercontent.com/naiba/twitter2telegram/main/docker-compose.yaml`
+4. create a `.env` file, `wget -O .env https://raw.githubusercontent.com/naiba/twitter2telegram/main/.env.example`
+5. update twitter/telegram tokens in `.env`
+6. run database migrate `docker-compose run --rm bot /bot/bot --migration`
+7. finally, run the bot `docker-compose up -d`

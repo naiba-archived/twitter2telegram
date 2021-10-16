@@ -22,14 +22,14 @@ use crate::{
     description = "forward tweets to telegram bot, all params should be appended to the command, separated by a space, like `/SetTwitterVerifyCode 1234567`, first you should do step 1 --> 2"
 )]
 enum Command {
-    #[command(description = "Menu")]
+    #[command(rename = "lowercase", description = "Menu")]
     Start,
     #[command(description = "Step1: get twitter authorize url")]
     GetTwitterAuthURL,
     #[command(description = "Step2: set twitter authorize code (param: a 7-digit number)")]
     SetTwitterVerifyCode(String),
     #[command(
-        description = "Subscribe to Twitter users by Twitter ID, which can be found at tweeterid.com (param: a huge number)"
+        description = "Subscribe to Twitter ID, which can be found at tweeterid.com (param: a huge number)"
     )]
     FollowTwitterID(i64),
     #[command(description = "Unsubscribe from Twitter ID (param: a huge number)")]
