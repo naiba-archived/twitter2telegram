@@ -1,5 +1,4 @@
 use std::{
-    env,
     sync::Arc,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
@@ -24,24 +23,26 @@ use crate::{
 
 #[derive(BotCommand)]
 #[command(
-    description = "Forward tweets to telegram bot, all params should be appended to the command, separated by a space, like `/SetTwitterVerifyCode 1234567`, *BEFORE* start, you should do step 1 \\-\\-\\> 2\\.\n"
+    description = "T2TBot: bot that retweets tweets to telegram, all parameters should be appended to the command, separated by spaces, e.g. `/SetTwitterVerifyCode 1234567`, *BEFORE YOU START*, you should complete step 1 \\-\\-\\> 2\\.\n"
 )]
 enum Command {
     #[command(rename = "lowercase", description = "Menu")]
     Start,
-    #[command(description = "Step1: get twitter authorization URL")]
+    #[command(description = "Step1: Get the authorization URL for twitter")]
     GetTwitterAuthURL,
-    #[command(description = "Step2: set twitter authorize code _\\(param: a 7\\-digit number\\)_")]
+    #[command(
+        description = "Step2: Set the Twitter authorisation code _\\(parameter: 7 digits)\\)_"
+    )]
     SetTwitterVerifyCode(String),
     #[command(
-        description = "Subscribe to [Twitter ID](https://tweeterid.com) _\\(param: a huge number\\)_"
+        description = "Subscribe to [Twitter ID](https://tweeterid.com) _\\(parameter: a huge number\\)_"
     )]
     FollowTwitterID(i64),
-    #[command(description = "Unsubscribe from Twitter ID _\\(param: a huge number\\)_")]
+    #[command(description = "Unsubscribe from Twitter ID _\\(parameter: a huge number\\)_")]
     UnfollowTwitterID(i64),
     #[command(description = "List subscribed Twitter users")]
     ListFollowedTwitterID,
-    #[command(description = "*OWNER* Add use", parse_with = "split")]
+    #[command(description = "*OWNER* Add a user", parse_with = "split")]
     AddUser {
         telegram_id: i64,
         custom_label: String,
@@ -67,7 +68,6 @@ impl TelegramBot {
         twitter_token: KeyPair,
         tg_token: String,
     ) -> Self {
-        teloxide::enable_logging!();
         let bot = teloxide::Bot::new(&tg_token)
             .parse_mode(ParseMode::MarkdownV2)
             .auto_send();
@@ -102,7 +102,7 @@ async fn answer(
     let user_pre_check = || async {
         if user.is_none() {
             cx.answer(format!(
-                "User {:?} Not authorized, please contact administrator to add permissions",
+                "User {:?} not authorized, please contact administrator to add permissions",
                 sender.id
             ))
             .await
@@ -233,7 +233,7 @@ async fn answer(
                         .await
                         .unwrap();
                     };
-                    format!("Added successfully {:?} Records", count)
+                    format!("Added successfully, affecting {:?} records", count)
                 }
                 Err(err) => {
                     format!("Failure, error {:?}", err)
@@ -264,7 +264,7 @@ async fn answer(
             };
             cx.answer(match res {
                 Ok(count) => {
-                    format!("Unsubscribe Success {:?} Records", count)
+                    format!("Unsubscribe Success, affecting {:?} records", count)
                 }
                 Err(err) => {
                     format!("Failure, error {:?}", err)
@@ -325,7 +325,7 @@ async fn answer(
                 telegram_id,
                 match res {
                     Ok(count) => {
-                        format!("Success {:?} Records", count)
+                        format!("Success, affecting {:?} Records", count)
                     }
                     Err(err) => {
                         format!("Failure, error {:?}", err)

@@ -3,7 +3,7 @@ use std::{env, sync::Arc, time::Duration};
 use diesel::{ExpressionMethods, GroupByDsl, QueryDsl, RunQueryDsl};
 use dotenv::dotenv;
 use egg_mode::stream::StreamMessage;
-use log::error;
+use log::{debug, info};
 use r_cache::cache::Cache;
 use teloxide::{
     adaptors::{AutoSend, DefaultParseMode},
@@ -21,19 +21,19 @@ use user_model::User;
 
 #[macro_use]
 extern crate diesel_migrations;
-
 embed_migrations!("./migrations");
 
 #[tokio::main]
 async fn main() {
     dotenv().ok();
+    pretty_env_logger::init_timed();
 
     let db_pool: twitter2telegram::DbPool =
         twitter2telegram::establish_connection(&env::var("DATABASE_URL").unwrap());
 
     let args: Vec<String> = std::env::args().collect();
     if args.len() > 1 && args[1] == "migration" {
-        println!(
+        info!(
             "migration {:?}",
             diesel_migrations::run_pending_migrations(&db_pool.get().unwrap())
         );
@@ -95,7 +95,7 @@ async fn run_twitter_subscriber(
             .add_token(u.twitter_access_token.as_ref().unwrap())
             .await
         {
-            error!("add twitter token: {:?}", e);
+            debug!("add twitter token: {:?}", e);
             if e.to_string().contains("Invalid or expired token") {
                 user_model::update_user(
                     &db_pool.get().unwrap(),
@@ -108,7 +108,10 @@ async fn run_twitter_subscriber(
                 if tg_bot
                     .send_message(
                         u.id,
-                        format!("Twitter Token 已失效 {}", escape(&e.to_string())),
+                        format!(
+                            "Your Twitter authorization has expired, {}",
+                            escape(&e.to_string())
+                        ),
                     )
                     .await
                     .is_err()

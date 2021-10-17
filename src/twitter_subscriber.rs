@@ -2,7 +2,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use egg_mode::stream::StreamMessage;
 use futures::{FutureExt, TryStreamExt};
-use log::{error, info};
+use log::{debug, warn};
 use teloxide::{
     adaptors::{AutoSend, DefaultParseMode},
     prelude::Requester,
@@ -56,8 +56,8 @@ impl TwitterSubscriber {
                             None => Vec::new(),
                         };
                         drop(ts_read);
-                        info!(
-                            "forward tweet from {}#{:?} to {:?}",
+                        debug!(
+                            "Forward tweet from {}#{:?} to {:?}",
                             &user.screen_name, &user.id, users
                         );
                         for tg_user_id in users {
@@ -87,13 +87,13 @@ impl TwitterSubscriber {
     pub async fn add_token(&mut self, token: &str) -> Result<(), anyhow::Error> {
         let hash = TwitterSubscriber::token_hash(token);
         if self.token_map.contains_key(&hash) {
-            info!("token 已添加过 {}", token);
+            warn!("Token has been added {}", token);
             return Ok(());
         }
         let t: egg_mode::Token = serde_json::from_str(token)?;
         let user = egg_mode::user::show(783214, &t).await?;
         if user.screen_name.ne("Twitter") {
-            return Err(anyhow::anyhow!("token 已失效"));
+            return Err(anyhow::anyhow!("Twitter authorization has expired"));
         }
         self.token_vec.insert(0, hash.clone());
         self.token_map.insert(
@@ -108,7 +108,7 @@ impl TwitterSubscriber {
     }
     pub async fn add_follow(&mut self, f: Follow) -> Result<String, anyhow::Error> {
         if self.token_vec.len().eq(&0) {
-            return Err(anyhow::anyhow!("无有效 Token"));
+            return Err(anyhow::anyhow!("No valid Twitter token"));
         }
         if self.follow_map.contains_key(&f.twitter_user_id) {
             return Ok("".to_string());
@@ -180,7 +180,7 @@ impl TwitterSubscriber {
                 let (tx, rx) = tokio::sync::oneshot::channel::<()>();
                 ctx.end_tx = Some(tx);
                 drop(ts_writer);
-                info!("twitter subscribe {:?}", &follows);
+                debug!("Twitter subscribe {:?}", &follows);
                 let mut stream = egg_mode::stream::filter()
                     .follow(follows.as_slice())
                     .start(&t);
@@ -195,13 +195,13 @@ impl TwitterSubscriber {
                                     continue;
                                 },
                                 Err(e)=>{
-                                    error!("twitter {:?} subscribe error {:?}", &follows, e);
+                                    warn!("Twitter {:?} subscribe error {:?}", &follows, e);
                                     break;
                                 }
                             };
                         },
                         _ = &mut rx_fuse => {
-                            info!("twitter {:?} subscribe stop", &follows);
+                            debug!("Twitter {:?} subscribe exited", &follows);
                             return;
                        },
                     };
