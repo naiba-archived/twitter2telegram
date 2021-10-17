@@ -148,7 +148,7 @@ async fn answer(
                     Some(Duration::from_secs(600)),
                 )
                 .await;
-            cx.answer(auth_url).await?
+            cx.answer(escape(&auth_url)).await?
         }
         Command::SetTwitterVerifyCode(code) => {
             if !user_pre_check().await {
@@ -207,6 +207,10 @@ async fn answer(
                     .await?;
                 return Ok(());
             };
+            if x_twitter_user_id.le(&0) {
+                cx.answer("Incorrect ID").await?;
+                return Ok(());
+            }
             let token: egg_mode::Token =
                 serde_json::from_str(&user.twitter_access_token.unwrap()).unwrap();
             let twitter_user = egg_mode::user::show(x_twitter_user_id as u64, &token).await?;
@@ -255,6 +259,10 @@ async fn answer(
                     .await?;
                 return Ok(());
             };
+            if x_twitter_user_id.le(&0) {
+                cx.answer("Incorrect ID").await?;
+                return Ok(());
+            }
             let res =
                 follow_model::unfollow(&tg_bot.db_pool.get().unwrap(), user.id, x_twitter_user_id);
             let ts = tg_bot.twitter_subscriber.as_ref().unwrap();
@@ -306,6 +314,10 @@ async fn answer(
             custom_label,
         } => {
             if !admin_pre_check().await {
+                return Ok(());
+            }
+            if telegram_id.le(&0) {
+                cx.answer("Incorrect ID").await?;
                 return Ok(());
             }
             let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
