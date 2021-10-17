@@ -23,7 +23,7 @@ use crate::{
 
 #[derive(BotCommand)]
 #[command(
-    description = "T2TBot: bot that retweets tweets to telegram, all parameters should be appended to the command, separated by spaces, e.g. `/SetTwitterVerifyCode 1234567`, *BEFORE YOU START*, you should complete step 1 \\-\\-\\> 2\\.\n"
+    description = "T2TBot: bot that retweets tweets to telegram, all parameters should be appended to the command, separated by spaces, e\\.g\\. `/SetTwitterVerifyCode 1234567`, *BEFORE YOU START*, you should complete step 1 \\-\\-\\> 2\\.\n"
 )]
 enum Command {
     #[command(rename = "lowercase", description = "Menu")]
