@@ -7,6 +7,8 @@ pub mod user_model;
 #[macro_use]
 extern crate diesel;
 
+pub const GIT_HASH: &'static str = env!("GIT_HASH");
+
 use diesel::{
     r2d2::{ConnectionManager, Pool},
     sqlite::SqliteConnection,

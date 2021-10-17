@@ -18,12 +18,12 @@ use crate::{
     follow_model,
     twitter_subscriber::TwitterSubscriber,
     user_model::{self, User},
-    DbPool,
+    DbPool, GIT_HASH,
 };
 
 #[derive(BotCommand)]
 #[command(
-    description = "T2TBot: bot that retweets tweets to telegram, all parameters should be appended to the command, separated by spaces, e\\.g\\. `/SetTwitterVerifyCode 1234567`, *BEFORE YOU START*, you should complete step 1 \\-\\-\\> 2\\.\n"
+    description = "T2TBot\\#HASH: bot that retweets tweets to telegram, all parameters should be appended to the command, separated by spaces, e\\.g\\. `/SetTwitterVerifyCode 1234567`, *BEFORE YOU START*, you should complete step 1 \\-\\-\\> 2\\.\n"
 )]
 enum Command {
     #[command(rename = "lowercase", description = "Menu")]
@@ -31,7 +31,7 @@ enum Command {
     #[command(description = "Step1: Get the authorization URL for twitter")]
     GetTwitterAuthURL,
     #[command(
-        description = "Step2: Set the Twitter authorisation code _\\(parameter: 7 digits)\\)_"
+        description = "Step2: Set the Twitter authorisation code _\\(parameter: 7 digits\\)_"
     )]
     SetTwitterVerifyCode(String),
     #[command(
@@ -125,8 +125,12 @@ async fn answer(
             if !user_pre_check().await {
                 return Ok(());
             };
-            cx.answer(Command::descriptions().replace(" - ", " \\- "))
-                .await?
+            cx.answer(
+                Command::descriptions()
+                    .replace(" - ", " \\- ")
+                    .replace("HASH", &GIT_HASH[..8]),
+            )
+            .await?
         }
         Command::GetTwitterAuthURL => {
             if !user_pre_check().await {

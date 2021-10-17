@@ -1,4 +1,5 @@
 [package]
+build = "src/build.rs"
 edition = "2018"
 name = "twitter2telegram"
 version = "0.1.0"
