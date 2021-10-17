@@ -1,9 +1,14 @@
 use std::{collections::HashMap, sync::Arc};
 
-use egg_mode::{stream::StreamMessage, tweet::Tweet};
+use egg_mode::stream::StreamMessage;
 use futures::{FutureExt, TryStreamExt};
 use log::{error, info};
-use teloxide::{adaptors::AutoSend, prelude::Requester, Bot};
+use teloxide::{
+    adaptors::{AutoSend, DefaultParseMode},
+    prelude::Requester,
+    utils::markdown::{bold, escape, link},
+    Bot,
+};
 use tokio::sync::RwLock;
 
 use crate::follow_model::Follow;
@@ -26,15 +31,6 @@ impl TwitterSubscriber {
     fn token_hash(token: &str) -> String {
         format!("{:x}", md5::compute(token))
     }
-    fn get_first_media_url(t: &Tweet) -> String {
-        match &t.entities.media {
-            Some(media) => match media.first() {
-                Some(m) => format!("\nmedia: {}", m.media_url_https.clone()),
-                None => "".to_string(),
-            },
-            None => "".to_string(),
-        }
-    }
     pub fn new(tweet_tx: tokio::sync::mpsc::Sender<StreamMessage>) -> Self {
         TwitterSubscriber {
             tweet_tx,
@@ -46,7 +42,7 @@ impl TwitterSubscriber {
     }
     pub async fn forward_tweet(
         ts: Arc<RwLock<TwitterSubscriber>>,
-        tg: AutoSend<Bot>,
+        tg: AutoSend<DefaultParseMode<Bot>>,
         mut tweet_rx: tokio::sync::mpsc::Receiver<StreamMessage>,
     ) {
         tokio::spawn(async move {
@@ -68,13 +64,15 @@ impl TwitterSubscriber {
                             tg.send_message(
                                 tg_user_id.clone(),
                                 format!(
-                                    "{}({:?}): {}{}\nhttps://twitter.com/{}/status/{:?}",
-                                    &user.screen_name,
-                                    &user.id,
-                                    t.text,
-                                    &TwitterSubscriber::get_first_media_url(&t),
-                                    &user.screen_name,
-                                    t.id
+                                    "{}: {}",
+                                    bold(&escape(&user.screen_name)),
+                                    link(
+                                        &format!(
+                                            "https://twitter.com/{}/status/{:?}",
+                                            &user.screen_name, t.id
+                                        ),
+                                        "credit"
+                                    )
                                 ),
                             )
                             .await

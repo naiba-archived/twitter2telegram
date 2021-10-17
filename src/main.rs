@@ -5,7 +5,12 @@ use dotenv::dotenv;
 use egg_mode::stream::StreamMessage;
 use log::error;
 use r_cache::cache::Cache;
-use teloxide::{adaptors::AutoSend, prelude::Requester, Bot};
+use teloxide::{
+    adaptors::{AutoSend, DefaultParseMode},
+    prelude::Requester,
+    utils::markdown::escape,
+    Bot,
+};
 use tokio::sync::{mpsc, RwLock};
 
 use twitter2telegram::{
@@ -75,7 +80,7 @@ async fn main() {
 }
 
 async fn run_twitter_subscriber(
-    tg_bot: AutoSend<Bot>,
+    tg_bot: AutoSend<DefaultParseMode<Bot>>,
     ts: Arc<RwLock<TwitterSubscriber>>,
     db_pool: DbPool,
 ) {
@@ -101,7 +106,10 @@ async fn run_twitter_subscriber(
                 )
                 .unwrap();
                 if tg_bot
-                    .send_message(u.id, format!("Twitter Token 已失效 {:?}", e))
+                    .send_message(
+                        u.id,
+                        format!("Twitter Token 已失效 {}", escape(&e.to_string())),
+                    )
                     .await
                     .is_err()
                 {

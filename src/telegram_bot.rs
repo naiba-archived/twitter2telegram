@@ -7,7 +7,12 @@ use std::{
 use chrono::NaiveDateTime;
 use egg_mode::KeyPair;
 use r_cache::cache::Cache;
-use teloxide::{prelude::*, utils::command::BotCommand};
+use teloxide::{
+    adaptors::DefaultParseMode,
+    prelude::*,
+    types::ParseMode,
+    utils::{command::BotCommand, markdown::escape},
+};
 use tokio::sync::RwLock;
 
 use crate::{
@@ -19,24 +24,24 @@ use crate::{
 
 #[derive(BotCommand)]
 #[command(
-    description = "forward tweets to telegram bot, all params should be appended to the command, separated by a space, like `/SetTwitterVerifyCode 1234567`, first you should do step 1 --> 2\n\n"
+    description = "Forward tweets to telegram bot, all params should be appended to the command, separated by a space, like `/SetTwitterVerifyCode 1234567`, *BEFORE* start, you should do step 1 \\-\\-\\> 2\\.\n"
 )]
 enum Command {
     #[command(rename = "lowercase", description = "Menu")]
     Start,
     #[command(description = "Step1: get twitter authorization URL")]
     GetTwitterAuthURL,
-    #[command(description = "Step2: set twitter authorize code (param: a 7-digit number)")]
+    #[command(description = "Step2: set twitter authorize code _\\(param: a 7\\-digit number\\)_")]
     SetTwitterVerifyCode(String),
     #[command(
-        description = "Subscribe to Twitter ID, which can be found at tweeterid.com (param: a huge number)"
+        description = "Subscribe to [Twitter ID](https://tweeterid.com) _\\(param: a huge number\\)_"
     )]
     FollowTwitterID(i64),
-    #[command(description = "Unsubscribe from Twitter ID (param: a huge number)")]
+    #[command(description = "Unsubscribe from Twitter ID _\\(param: a huge number\\)_")]
     UnfollowTwitterID(i64),
     #[command(description = "List subscribed Twitter users")]
     ListFollowedTwitterID,
-    #[command(description = "(OWNER) Add user", parse_with = "split")]
+    #[command(description = "*OWNER* Add use", parse_with = "split")]
     AddUser {
         telegram_id: i64,
         custom_label: String,
@@ -44,7 +49,7 @@ enum Command {
 }
 
 pub struct TelegramBot {
-    pub bot: teloxide::prelude::AutoSend<teloxide::Bot>,
+    pub bot: AutoSend<DefaultParseMode<teloxide::Bot>>,
     pub name: String,
     pub db_pool: DbPool,
     pub cache: Cache<i64, egg_mode::KeyPair>,
@@ -63,7 +68,9 @@ impl TelegramBot {
         tg_token: String,
     ) -> Self {
         teloxide::enable_logging!();
-        let bot = teloxide::Bot::new(&tg_token).auto_send();
+        let bot = teloxide::Bot::new(&tg_token)
+            .parse_mode(ParseMode::MarkdownV2)
+            .auto_send();
         TelegramBot {
             bot: bot,
             name: name,
@@ -82,7 +89,7 @@ impl TelegramBot {
 
 async fn answer(
     tg_bot: Arc<TelegramBot>,
-    cx: UpdateWithCx<AutoSend<Bot>, Message>,
+    cx: UpdateWithCx<AutoSend<DefaultParseMode<Bot>>, Message>,
     command: Command,
 ) -> Result<(), anyhow::Error> {
     let sender = cx.update.from().unwrap();
@@ -95,7 +102,7 @@ async fn answer(
     let user_pre_check = || async {
         if user.is_none() {
             cx.answer(format!(
-                "User(telegramId:{:?}) Not authorized, please contact administrator to add permissions",
+                "User {:?} Not authorized, please contact administrator to add permissions",
                 sender.id
             ))
             .await
@@ -118,7 +125,8 @@ async fn answer(
             if !user_pre_check().await {
                 return Ok(());
             };
-            cx.answer(Command::descriptions()).await?
+            cx.answer(Command::descriptions().replace(" - ", " \\- "))
+                .await?
         }
         Command::GetTwitterAuthURL => {
             if !user_pre_check().await {
@@ -143,7 +151,7 @@ async fn answer(
                 return Ok(());
             };
             if !code.trim().len().eq(&7) {
-                cx.answer("The 7-digit authorization code cannot be empty")
+                cx.answer(escape("The 7-digit authorization code cannot be empty"))
                     .await?;
                 return Ok(());
             }
@@ -280,11 +288,10 @@ async fn answer(
                 return Ok(());
             }
             let follow_vec = res.unwrap();
-            let mut msg =
-                String::from("You are currently subscribed to the following accounts.\n\n");
+            let mut msg = escape("You are currently subscribed to the following accounts.\n");
             follow_vec.iter().for_each(|f| {
                 msg.push_str(&format!(
-                    "{}({:?})\n",
+                    "\\* *{}* _{:?}_\n",
                     f.twitter_username, f.twitter_user_id
                 ))
             });
@@ -313,7 +320,7 @@ async fn answer(
                 },
             );
             cx.answer(format!(
-                "{}({:?}) Add {}",
+                "*{}* _{:?}_ Add {}",
                 custom_label.clone(),
                 telegram_id,
                 match res {
