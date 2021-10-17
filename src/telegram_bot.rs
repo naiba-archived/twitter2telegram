@@ -182,7 +182,7 @@ async fn answer(
                 },
             );
             let mut ts_write = tg_bot.twitter_subscriber.as_ref().unwrap().write().await;
-            ts_write.add_token(&token_str).await?;
+            ts_write.add_token(user.id, &token_str).await?;
             drop(ts_write);
             cx.answer(match res {
                 Ok(count) => {
@@ -236,7 +236,7 @@ async fn answer(
                     if token.ne("") {
                         TwitterSubscriber::subscribe(
                             tg_bot.twitter_subscriber.as_ref().unwrap().clone(),
-                            &token,
+                            token,
                         )
                         .await
                         .unwrap();
@@ -270,7 +270,7 @@ async fn answer(
             let token = ts_write.remove_follow_id(user.id, x_twitter_user_id);
             drop(ts_write);
             if token.ne("") {
-                TwitterSubscriber::subscribe(ts.clone(), &token)
+                TwitterSubscriber::subscribe(ts.clone(), token)
                     .await
                     .unwrap();
             };
@@ -304,7 +304,8 @@ async fn answer(
             follow_vec.iter().for_each(|f| {
                 msg.push_str(&format!(
                     "\\* *{}* _{:?}_\n",
-                    f.twitter_username, f.twitter_user_id
+                    escape(&f.twitter_username),
+                    f.twitter_user_id
                 ))
             });
             cx.answer(msg).await?
@@ -337,7 +338,7 @@ async fn answer(
             );
             cx.answer(format!(
                 "*{}* _{:?}_ Add {}",
-                custom_label.clone(),
+                escape(&custom_label.clone()),
                 telegram_id,
                 match res {
                     Ok(count) => {

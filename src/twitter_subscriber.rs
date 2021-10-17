@@ -17,9 +17,11 @@ struct TwitterTokenContext {
     follows: Vec<u64>,
     end_tx: Option<tokio::sync::oneshot::Sender<()>>,
     token: String,
+    user_id: i64,
 }
 
 pub struct TwitterSubscriber {
+    tg_bot: AutoSend<DefaultParseMode<Bot>>,
     tweet_tx: tokio::sync::mpsc::Sender<StreamMessage>,
     token_map: HashMap<String, TwitterTokenContext>,
     token_vec: Vec<String>,
@@ -31,8 +33,12 @@ impl TwitterSubscriber {
     fn token_hash(token: &str) -> String {
         format!("{:x}", md5::compute(token))
     }
-    pub fn new(tweet_tx: tokio::sync::mpsc::Sender<StreamMessage>) -> Self {
+    pub fn new(
+        tweet_tx: tokio::sync::mpsc::Sender<StreamMessage>,
+        tg_bot: AutoSend<DefaultParseMode<Bot>>,
+    ) -> Self {
         TwitterSubscriber {
+            tg_bot,
             tweet_tx,
             token_map: HashMap::new(),
             follow_map: HashMap::new(),
@@ -40,9 +46,13 @@ impl TwitterSubscriber {
             follow_to_twiiter: HashMap::new(),
         }
     }
+    pub async fn check_token_valid(token: &str) -> Result<bool, anyhow::Error> {
+        let t: egg_mode::Token = serde_json::from_str(token)?;
+        let user = egg_mode::user::show(783214, &t).await?;
+        Ok(user.screen_name.ne("Twitter"))
+    }
     pub async fn forward_tweet(
         ts: Arc<RwLock<TwitterSubscriber>>,
-        tg: AutoSend<DefaultParseMode<Bot>>,
         mut tweet_rx: tokio::sync::mpsc::Receiver<StreamMessage>,
     ) {
         tokio::spawn(async move {
@@ -55,6 +65,7 @@ impl TwitterSubscriber {
                             Some(users) => users.clone(),
                             None => Vec::new(),
                         };
+                        let tg = ts_read.tg_bot.clone();
                         drop(ts_read);
                         debug!(
                             "Forward tweet from {}#{:?} to {:?}",
@@ -84,21 +95,20 @@ impl TwitterSubscriber {
             }
         });
     }
-    pub async fn add_token(&mut self, token: &str) -> Result<(), anyhow::Error> {
-        let hash = TwitterSubscriber::token_hash(token);
+    pub async fn add_token(&mut self, user_id: i64, token: &str) -> Result<(), anyhow::Error> {
+        let hash = Self::token_hash(token);
         if self.token_map.contains_key(&hash) {
             warn!("Token has been added {}", token);
             return Ok(());
         }
-        let t: egg_mode::Token = serde_json::from_str(token)?;
-        let user = egg_mode::user::show(783214, &t).await?;
-        if user.screen_name.ne("Twitter") {
+        if !Self::check_token_valid(token).await? {
             return Err(anyhow::anyhow!("Twitter authorization has expired"));
         }
         self.token_vec.insert(0, hash.clone());
         self.token_map.insert(
             hash.clone(),
             TwitterTokenContext {
+                user_id,
                 follows: Vec::new(),
                 end_tx: None,
                 token: token.to_string(),
@@ -118,7 +128,7 @@ impl TwitterSubscriber {
         let mut minimum_follow_token = self.token_vec[0].clone();
         let mut minimum_follow_count = first.follows.len();
         if first.follows.len() > 0 {
-            // 对 follow id 进行分配
+            // 将 follow 分配给 token
             for t in &self.token_vec {
                 let count = self.token_map.get(t).unwrap().follows.len();
                 if count.lt(&minimum_follow_count) {
@@ -162,21 +172,61 @@ impl TwitterSubscriber {
         ctx.end_tx.take().unwrap().send(()).unwrap();
         ctx.token.clone()
     }
-    pub fn remove_token(&self, token: &str) {}
-    pub async fn subscribe(
+    pub async fn remove_token(
         ts: Arc<RwLock<TwitterSubscriber>>,
         token: &str,
     ) -> Result<(), anyhow::Error> {
-        let t: egg_mode::Token = serde_json::from_str(token)?;
-        let hash = Self::token_hash(token);
+        let mut ts_writer = ts.write().await;
+        let tg_bot = ts_writer.tg_bot.clone();
+        let hash = Self::token_hash(&token);
+        let ctx = ts_writer.token_map.get_mut(&hash).unwrap();
+        // 停掉 token 订阅
+        if let Some(ch) = ctx.end_tx.as_ref() {
+            drop(ch);
+        }
+        // 逐个将用户订阅的 twitter 暂停
+        let follows = ctx.follows.clone();
+        let user_id = ctx.user_id;
+        drop(ctx);
+        for f in follows {
+            let mut ts_writer = ts.write().await;
+            let using_token = ts_writer.remove_follow_id(user_id, f as i64);
+            drop(ts_writer);
+            if using_token.ne("") && using_token.ne(token) {
+                // TODO fix cycle call function
+                // TwitterSubscriber::subscribe(ts.clone(), using_token).await;
+            }
+        }
+        // 给用户一个通知
+        tg_bot
+            .send_message(
+                user_id,
+                escape(
+                    "Your Twitter authorization has expired, you will not receive future messages.",
+                ),
+            )
+            .await?;
+        Ok(())
+    }
+    pub async fn subscribe(
+        ts: Arc<RwLock<TwitterSubscriber>>,
+        token: String,
+    ) -> Result<(), anyhow::Error> {
+        let t: egg_mode::Token = serde_json::from_str(&token)?;
+        let hash = Self::token_hash(&token);
         tokio::spawn(async move {
             loop {
                 let mut ts_writer = ts.write().await;
                 let ctx = ts_writer.token_map.get_mut(&hash).unwrap();
+                // 停掉之前的 follow 线程
                 if let Some(ch) = ctx.end_tx.as_ref() {
                     drop(ch);
                 }
                 let follows = ctx.follows.clone();
+                // 如果此 Token 下没有分配的 follow 了，直接退出
+                if follows.is_empty() {
+                    return;
+                }
                 let (tx, rx) = tokio::sync::oneshot::channel::<()>();
                 ctx.end_tx = Some(tx);
                 drop(ts_writer);
@@ -195,7 +245,15 @@ impl TwitterSubscriber {
                                     continue;
                                 },
                                 Err(e)=>{
+                                    // twitter 的 stream 出错退出，先打印错误信息
                                     warn!("Twitter {:?} subscribe error {:?}", &follows, e);
+                                    // 再检查一下 token 有效性，如果确认无效，走删除 token 流程
+                                    let res = Self::check_token_valid(&token).await;
+                                    if res.is_err() || !res.unwrap() {
+                                        // TODO check err
+                                        let _ = Self::remove_token(ts.clone(), &token).await;
+                                        return;
+                                    }
                                     break;
                                 }
                             };

@@ -60,8 +60,9 @@ async fn main() {
         env::var("TELEGRAM_BOT_TOKEN").unwrap(),
     );
 
+    let bot_clone = tg_bot.bot.clone();
     let (tx, rx) = mpsc::channel::<StreamMessage>(100);
-    let ts = Arc::new(RwLock::new(TwitterSubscriber::new(tx)));
+    let ts = Arc::new(RwLock::new(TwitterSubscriber::new(tx, bot_clone)));
 
     let ts_clone = ts.clone();
     tg_bot.set_twitter_subscriber(Some(ts_clone));
@@ -72,9 +73,8 @@ async fn main() {
         run_twitter_subscriber(bot_clone, ts_clone, db_pool).await;
     });
 
-    let bot_clone = tg_bot.bot.clone();
     let ts_clone = ts.clone();
-    tokio::spawn(async move { TwitterSubscriber::forward_tweet(ts_clone, bot_clone, rx).await });
+    tokio::spawn(async move { TwitterSubscriber::forward_tweet(ts_clone, rx).await });
 
     telegram_bot::run(Arc::new(tg_bot)).await;
 }
@@ -92,7 +92,7 @@ async fn run_twitter_subscriber(
     let mut ts_writer = ts.write().await;
     for u in &user_vec {
         if let Err(e) = ts_writer
-            .add_token(u.twitter_access_token.as_ref().unwrap())
+            .add_token(u.id, u.twitter_access_token.as_ref().unwrap())
             .await
         {
             debug!("add twitter token: {:?}", e);
@@ -146,9 +146,12 @@ async fn run_twitter_subscriber(
         drop(ts_writer2);
         // 更新监控
         for u in &user_vec {
-            TwitterSubscriber::subscribe(ts.clone(), &u.twitter_access_token.as_ref().unwrap())
-                .await
-                .unwrap();
+            TwitterSubscriber::subscribe(
+                ts.clone(),
+                u.twitter_access_token.as_ref().unwrap().clone(),
+            )
+            .await
+            .unwrap();
         }
         tokio::time::sleep(Duration::from_secs(3)).await;
     }

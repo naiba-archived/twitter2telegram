@@ -2,7 +2,12 @@
 
 Forward tweets to telegram bot.
 
-**ALPHA** Single-user use is largely unproblematic, but the scheduling of multiple twitter tokens for multiple users and followers is not yet well handled.
+## TBD
+
+- [x] Basic availability, single user subscription unsubscribe
+- [ ] Stable use for multiple users.
+  - [ ] Twitter authorization token expired
+  - [ ] Telegram chat deleted
 
 ## Usage
 
