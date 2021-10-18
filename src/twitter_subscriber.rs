@@ -49,7 +49,7 @@ impl TwitterSubscriber {
     pub async fn check_token_valid(token: &str) -> Result<bool, anyhow::Error> {
         let t: egg_mode::Token = serde_json::from_str(token)?;
         let user = egg_mode::user::show(783214, &t).await?;
-        Ok(user.screen_name.ne("Twitter"))
+        Ok(user.screen_name.eq("Twitter"))
     }
     pub async fn forward_tweet(
         ts: Arc<RwLock<TwitterSubscriber>>,

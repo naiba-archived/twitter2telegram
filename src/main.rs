@@ -96,7 +96,7 @@ async fn run_twitter_subscriber(
             .await
         {
             debug!("add twitter token: {:?}", e);
-            if e.to_string().contains("Invalid or expired token") {
+            if e.to_string().contains("expired") {
                 user_model::update_user(
                     &db_pool.get().unwrap(),
                     User {
@@ -106,13 +106,7 @@ async fn run_twitter_subscriber(
                 )
                 .unwrap();
                 if tg_bot
-                    .send_message(
-                        u.id,
-                        format!(
-                            "Your Twitter authorization has expired, {}",
-                            escape(&e.to_string())
-                        ),
-                    )
+                    .send_message(u.id, escape(&e.to_string()))
                     .await
                     .is_err()
                 {
@@ -136,7 +130,6 @@ async fn run_twitter_subscriber(
         .group_by(twitter_user_id)
         .load::<Follow>(&db_pool.get().unwrap())
         .unwrap();
-
     drop(ts_writer);
 
     // 加入监听
