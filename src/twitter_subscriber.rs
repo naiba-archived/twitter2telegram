@@ -60,6 +60,19 @@ impl TwitterSubscriber {
                 match m {
                     StreamMessage::Tweet(t) => {
                         let user = t.user.as_ref().unwrap();
+                        let retweet_user_id = {
+                            match t.retweeted_status {
+                                Some(rt) => match rt.user {
+                                    Some(u) => u.id,
+                                    None => 0,
+                                },
+                                None => 0,
+                            }
+                        };
+                        // ignore people retweeting their own tweets
+                        if user.id.eq(&retweet_user_id) {
+                            continue;
+                        };
                         let ts_read = ts.read().await;
                         let users = match ts_read.follow_to_twiiter.get(&(user.id as i64)) {
                             Some(users) => users.clone(),
