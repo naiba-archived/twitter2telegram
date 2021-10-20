@@ -243,7 +243,7 @@ impl TwitterSubscriber {
                 let (tx, rx) = tokio::sync::oneshot::channel::<()>();
                 ctx.end_tx = Some(tx);
                 drop(ts_writer);
-                debug!("Twitter subscribe {:?}", &follows);
+                debug!("Twitter {:?} subscribe", &follows);
                 let mut stream = egg_mode::stream::filter()
                     .follow(follows.as_slice())
                     .start(&t);
@@ -269,12 +269,13 @@ impl TwitterSubscriber {
                                         let _ = Self::remove_token(ts.clone(), &token).await;
                                         return;
                                     }
+                                    tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
                                     break;
                                 }
                             };
                         },
                         _ = &mut rx_fuse => {
-                            debug!("Twitter {:?} subscribe exited", &follows);
+                            debug!("Twitter {:?} subscribe active exit", &follows);
                             return;
                        },
                     };

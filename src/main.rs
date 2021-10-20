@@ -137,15 +137,12 @@ async fn run_twitter_subscriber(
         let mut ts_writer2 = ts.write().await;
         ts_writer2.add_follow(f).await.unwrap();
         drop(ts_writer2);
-        // 更新监控
-        for u in &user_vec {
-            TwitterSubscriber::subscribe(
-                ts.clone(),
-                u.twitter_access_token.as_ref().unwrap().clone(),
-            )
+    }
+
+    // 更新监控
+    for u in &user_vec {
+        TwitterSubscriber::subscribe(ts.clone(), u.twitter_access_token.as_ref().unwrap().clone())
             .await
             .unwrap();
-        }
-        tokio::time::sleep(Duration::from_secs(3)).await;
     }
 }
