@@ -253,8 +253,10 @@ impl TwitterSubscriber {
                        res = stream.try_next() => {
                             match res {
                                 Ok(m) => {
-                                    let ts_read = ts.read().await;
-                                    ts_read.tweet_tx.send(m.unwrap()).await.unwrap();
+                                    if let Some(m) = m {
+                                        let ts_read = ts.read().await;
+                                        ts_read.tweet_tx.send(m).await.unwrap();
+                                    }
                                     continue;
                                 },
                                 Err(e)=>{
