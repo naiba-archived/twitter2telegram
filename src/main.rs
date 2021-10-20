@@ -11,7 +11,10 @@ use teloxide::{
     utils::markdown::escape,
     Bot,
 };
-use tokio::sync::{mpsc, RwLock};
+use tokio::sync::{
+    mpsc::{self, Sender},
+    RwLock,
+};
 
 use twitter2telegram::{
     follow_model::Follow, schema::follows::dsl::*, schema::users::dsl::*, telegram_bot,
@@ -62,15 +65,25 @@ async fn main() {
 
     let bot_clone = tg_bot.bot.clone();
     let (tx, rx) = mpsc::channel::<StreamMessage>(100);
-    let ts = Arc::new(RwLock::new(TwitterSubscriber::new(tx, bot_clone)));
+    let (sub_tx, sub_rx) = mpsc::channel::<String>(100);
+    let sub_tx_clone = sub_tx.clone();
+    let ts = Arc::new(RwLock::new(TwitterSubscriber::new(
+        tx,
+        sub_tx_clone,
+        bot_clone,
+    )));
+
+    let ts_clone = ts.clone();
+    tokio::spawn(async move { TwitterSubscriber::subscribe_worker(ts_clone, sub_rx).await });
 
     let ts_clone = ts.clone();
     tg_bot.set_twitter_subscriber(Some(ts_clone));
 
     let bot_clone = tg_bot.bot.clone();
     let ts_clone = ts.clone();
+    let sub_tx_clone = sub_tx.clone();
     tokio::spawn(async {
-        run_twitter_subscriber(bot_clone, ts_clone, db_pool).await;
+        run_twitter_subscriber(bot_clone, sub_tx_clone, ts_clone, db_pool).await;
     });
 
     let ts_clone = ts.clone();
@@ -81,6 +94,7 @@ async fn main() {
 
 async fn run_twitter_subscriber(
     tg_bot: AutoSend<DefaultParseMode<Bot>>,
+    sub_tx: Sender<String>,
     ts: Arc<RwLock<TwitterSubscriber>>,
     db_pool: DbPool,
 ) {
@@ -133,15 +147,16 @@ async fn run_twitter_subscriber(
     drop(ts_writer);
 
     // 加入监听
+    let mut ts_writer2 = ts.write().await;
     for f in follow_vec {
-        let mut ts_writer2 = ts.write().await;
         ts_writer2.add_follow(f).await.unwrap();
-        drop(ts_writer2);
     }
+    drop(ts_writer2);
 
     // 更新监控
     for u in &user_vec {
-        TwitterSubscriber::subscribe(ts.clone(), u.twitter_access_token.as_ref().unwrap().clone())
+        sub_tx
+            .send(u.twitter_access_token.as_ref().unwrap().clone())
             .await
             .unwrap();
     }

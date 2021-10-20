@@ -1,4 +1,7 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
 use egg_mode::stream::StreamMessage;
 use futures::{FutureExt, TryStreamExt};
@@ -9,7 +12,10 @@ use teloxide::{
     utils::markdown::{bold, escape, link},
     Bot,
 };
-use tokio::sync::RwLock;
+use tokio::sync::{
+    mpsc::{Receiver, Sender},
+    RwLock,
+};
 
 use crate::follow_model::Follow;
 
@@ -22,7 +28,8 @@ struct TwitterTokenContext {
 
 pub struct TwitterSubscriber {
     tg_bot: AutoSend<DefaultParseMode<Bot>>,
-    tweet_tx: tokio::sync::mpsc::Sender<StreamMessage>,
+    tweet_tx: Sender<StreamMessage>,
+    subscribe_tx: Sender<String>,
     token_map: HashMap<String, TwitterTokenContext>,
     token_vec: Vec<String>,
     follow_map: HashMap<i64, String>,
@@ -30,20 +37,27 @@ pub struct TwitterSubscriber {
 }
 
 impl TwitterSubscriber {
-    fn token_hash(token: &str) -> String {
-        format!("{:x}", md5::compute(token))
-    }
     pub fn new(
-        tweet_tx: tokio::sync::mpsc::Sender<StreamMessage>,
+        tweet_tx: Sender<StreamMessage>,
+        subscribe_tx: Sender<String>,
         tg_bot: AutoSend<DefaultParseMode<Bot>>,
     ) -> Self {
         TwitterSubscriber {
             tg_bot,
             tweet_tx,
+            subscribe_tx,
             token_map: HashMap::new(),
             follow_map: HashMap::new(),
             token_vec: Vec::new(),
             follow_to_twiiter: HashMap::new(),
+        }
+    }
+    fn token_hash(token: &str) -> String {
+        format!("{:x}", md5::compute(token))
+    }
+    pub async fn subscribe_worker(ts: Arc<RwLock<TwitterSubscriber>>, mut rx: Receiver<String>) {
+        while let Some(t) = rx.recv().await {
+            let _ = TwitterSubscriber::subscribe(ts.clone(), t).await;
         }
     }
     pub async fn check_token_valid(token: &str) -> Result<bool, anyhow::Error> {
@@ -53,60 +67,58 @@ impl TwitterSubscriber {
     }
     pub async fn forward_tweet(
         ts: Arc<RwLock<TwitterSubscriber>>,
-        mut tweet_rx: tokio::sync::mpsc::Receiver<StreamMessage>,
+        mut tweet_rx: Receiver<StreamMessage>,
     ) {
-        tokio::spawn(async move {
-            while let Some(m) = tweet_rx.recv().await {
-                match m {
-                    StreamMessage::Tweet(t) => {
-                        let user = t.user.as_ref().unwrap();
-                        let retweet_user_id = {
-                            match t.retweeted_status {
-                                Some(rt) => match rt.user {
-                                    Some(u) => u.id,
-                                    None => 0,
-                                },
+        while let Some(m) = tweet_rx.recv().await {
+            match m {
+                StreamMessage::Tweet(t) => {
+                    let user = t.user.as_ref().unwrap();
+                    let retweet_user_id = {
+                        match t.retweeted_status {
+                            Some(rt) => match rt.user {
+                                Some(u) => u.id,
                                 None => 0,
-                            }
-                        };
-                        // ignore people retweeting their own tweets
-                        if user.id.eq(&retweet_user_id) {
-                            continue;
-                        };
-                        let ts_read = ts.read().await;
-                        let users = match ts_read.follow_to_twiiter.get(&(user.id as i64)) {
-                            Some(users) => users.clone(),
-                            None => Vec::new(),
-                        };
-                        let tg = ts_read.tg_bot.clone();
-                        drop(ts_read);
-                        debug!(
-                            "Forward tweet from {}#{:?} to {:?}",
-                            &user.screen_name, &user.id, users
-                        );
-                        for tg_user_id in users {
-                            tg.send_message(
-                                tg_user_id.clone(),
-                                format!(
-                                    "{}: {}",
-                                    bold(&escape(&user.screen_name)),
-                                    link(
-                                        &format!(
-                                            "https://twitter.com/{}/status/{:?}",
-                                            &user.screen_name, t.id
-                                        ),
-                                        "credit"
-                                    )
-                                ),
-                            )
-                            .await
-                            .unwrap();
+                            },
+                            None => 0,
                         }
+                    };
+                    // ignore people retweeting their own tweets
+                    if user.id.eq(&retweet_user_id) {
+                        continue;
+                    };
+                    let ts_read = ts.read().await;
+                    let users = match ts_read.follow_to_twiiter.get(&(user.id as i64)) {
+                        Some(users) => users.clone(),
+                        None => Vec::new(),
+                    };
+                    let tg = ts_read.tg_bot.clone();
+                    drop(ts_read);
+                    debug!(
+                        "Forward tweet from {}#{:?} to {:?}",
+                        &user.screen_name, &user.id, users
+                    );
+                    for tg_user_id in users {
+                        tg.send_message(
+                            tg_user_id.clone(),
+                            format!(
+                                "{}: {}",
+                                bold(&escape(&user.screen_name)),
+                                link(
+                                    &format!(
+                                        "https://twitter.com/{}/status/{:?}",
+                                        &user.screen_name, t.id
+                                    ),
+                                    "credit"
+                                )
+                            ),
+                        )
+                        .await
+                        .unwrap();
                     }
-                    _ => {}
                 }
+                _ => {}
             }
-        });
+        }
     }
     pub async fn add_token(&mut self, user_id: i64, token: &str) -> Result<(), anyhow::Error> {
         let hash = Self::token_hash(token);
@@ -201,14 +213,21 @@ impl TwitterSubscriber {
         let follows = ctx.follows.clone();
         let user_id = ctx.user_id;
         drop(ctx);
+        let mut tokens_need_to_react = HashSet::new();
         for f in follows {
             let mut ts_writer = ts.write().await;
             let using_token = ts_writer.remove_follow_id(user_id, f as i64);
             drop(ts_writer);
             if using_token.ne("") && using_token.ne(token) {
-                // TODO fix cycle call function
-                // TwitterSubscriber::subscribe(ts.clone(), using_token).await;
+                tokens_need_to_react.insert(using_token);
             }
+        }
+        // Reorganizing token subscription relationships
+        let ts_read = ts.read().await;
+        let subscribe_tx = ts_read.subscribe_tx.clone();
+        drop(ts_read);
+        for t in tokens_need_to_react {
+            let _ = subscribe_tx.send(t).await;
         }
         // 给用户一个通知
         tg_bot

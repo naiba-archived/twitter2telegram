@@ -6,7 +6,7 @@ Forward tweets to telegram bot.
 
 - [x] Basic availability, single user subscription unsubscribe
 - [ ] Stable use for multiple users.
-  - [ ] Twitter authorization token expired
+  - [x] Twitter authorization token expired
   - [ ] Telegram chat deleted
 
 ## Usage
