@@ -70,7 +70,6 @@ impl TwitterSubscriber {
         mut tweet_rx: Receiver<StreamMessage>,
     ) {
         while let Some(m) = tweet_rx.recv().await {
-            println!("bingo {:?}", m);
             let msg = match m {
                 StreamMessage::Tweet(t) => {
                     let user = t.user.as_ref().unwrap();
