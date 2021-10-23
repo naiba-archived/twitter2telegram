@@ -70,7 +70,8 @@ impl TwitterSubscriber {
         mut tweet_rx: Receiver<StreamMessage>,
     ) {
         while let Some(m) = tweet_rx.recv().await {
-            match m {
+            println!("bingo {:?}", m);
+            let msg = match m {
                 StreamMessage::Tweet(t) => {
                     let user = t.user.as_ref().unwrap();
                     let retweet_user_id = {
@@ -86,40 +87,43 @@ impl TwitterSubscriber {
                     if user.id.eq(&retweet_user_id) {
                         continue;
                     };
-                    let ts_read = ts.read().await;
-                    let users = match ts_read.follow_to_twiiter.get(&(user.id as i64)) {
-                        Some(users) => users.clone(),
-                        None => Vec::new(),
-                    };
-                    let tg = ts_read.tg_bot.clone();
-                    drop(ts_read);
-                    debug!(
-                        "Forward tweet from {}#{:?} to {:?}",
-                        &user.screen_name, &user.id, users
-                    );
-                    for tg_user_id in users {
-                        tg.send_message(
-                            tg_user_id.clone(),
-                            format!(
-                                "{}: {}",
-                                bold(&escape(&user.screen_name)),
-                                link(
-                                    &format!(
-                                        "https://twitter.com/{}/status/{:?}",
-                                        &user.screen_name, t.id
-                                    ),
-                                    "credit"
-                                )
-                            ),
-                        )
-                        .await
-                        .unwrap();
-                    }
+                    Some((
+                        user.id,
+                        format!(
+                            "{}: {}",
+                            bold(&escape(&user.screen_name)),
+                            link(
+                                &format!(
+                                    "https://twitter.com/{}/status/{:?}",
+                                    &user.screen_name, t.id
+                                ),
+                                "credit"
+                            )
+                        ),
+                    ))
                 }
-                _ => {}
+                _ => None,
+            };
+            if let Some((twitter_user_id, msg)) = msg {
+                let ts_read = ts.read().await;
+                let users = match ts_read.follow_to_twiiter.get(&(twitter_user_id as i64)) {
+                    Some(users) => users.clone(),
+                    None => Vec::new(),
+                };
+                if users.len().eq(&0) {
+                    drop(ts_read);
+                    continue;
+                }
+                let tg = ts_read.tg_bot.clone();
+                drop(ts_read);
+                debug!("Send {} to {:?}", &msg, users);
+                for tg_user_id in users {
+                    tg.send_message(tg_user_id.clone(), &msg).await.unwrap();
+                }
             }
         }
     }
+
     pub async fn add_token(&mut self, user_id: i64, token: &str) -> Result<(), anyhow::Error> {
         let hash = Self::token_hash(token);
         if self.token_map.contains_key(&hash) {
