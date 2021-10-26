@@ -182,6 +182,9 @@ impl TwitterSubscriber {
         Ok(minimum.token.clone())
     }
     pub fn remove_follow_id(&mut self, user_id: i64, twitter_id: i64) -> String {
+        if !self.follow_to_twiiter.contains_key(&twitter_id) {
+            return "".to_string();
+        }
         let users = self.follow_to_twiiter.get_mut(&twitter_id).unwrap();
         let index = users.iter().position(|f| f.eq(&user_id)).unwrap();
         users.remove(index);
