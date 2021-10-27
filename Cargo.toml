@@ -1,6 +1,6 @@
 [package]
 build = "src/build.rs"
-edition = "2018"
+edition = "2021"
 name = "twitter2telegram"
 version = "0.1.0"
 
