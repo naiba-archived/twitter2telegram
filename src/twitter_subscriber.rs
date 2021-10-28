@@ -117,7 +117,7 @@ impl TwitterSubscriber {
                 drop(ts_read);
                 debug!("Send {} to {:?}", &msg, users);
                 for tg_user_id in users {
-                    tg.send_message(tg_user_id.clone(), &msg).await.unwrap();
+                    let _ = tg.send_message(tg_user_id.clone(), &msg).await;
                 }
             }
         }
@@ -236,14 +236,14 @@ impl TwitterSubscriber {
             let _ = subscribe_tx.send(t).await;
         }
         // 给用户一个通知
-        tg_bot
+        let _ = tg_bot
             .send_message(
                 user_id,
                 escape(
                     "Your Twitter authorization has expired, you will not receive future messages.",
                 ),
             )
-            .await?;
+            .await;
         Ok(())
     }
     pub async fn subscribe(
