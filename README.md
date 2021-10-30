@@ -1,13 +1,6 @@
 # T2T Bot
 
-Forward tweets to telegram bot.
-
-## TBD
-
-- [x] Basic availability, single user subscription unsubscribe
-- [ ] Stable use for multiple users.
-  - [x] Twitter authorization token expired
-  - [ ] Telegram chat deleted
+Forward tweets to telegram.
 
 ## Usage
 
@@ -18,3 +11,4 @@ Forward tweets to telegram bot.
 5. update twitter/telegram tokens in `.env`
 6. run database migrate `docker-compose run --rm bot /bot/bot --migration`
 7. finally, run the bot `docker-compose up -d`
+

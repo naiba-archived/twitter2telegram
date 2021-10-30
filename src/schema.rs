@@ -12,7 +12,6 @@ table! {
     users (id) {
         id -> BigInt,
         label -> Text,
-        telegram_status -> Bool,
         twitter_access_token -> Nullable<Text>,
         twitter_status -> Bool,
         created_at -> Timestamp,

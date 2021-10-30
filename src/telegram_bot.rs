@@ -327,7 +327,6 @@ async fn answer(
                 User {
                     id: telegram_id,
                     label: custom_label.clone(),
-                    telegram_status: false,
                     twitter_access_token: None,
                     twitter_status: false,
                     created_at: NaiveDateTime::from_timestamp(

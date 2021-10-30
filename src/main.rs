@@ -3,7 +3,7 @@ use std::{env, sync::Arc, time::Duration};
 use diesel::{ExpressionMethods, GroupByDsl, QueryDsl, RunQueryDsl};
 use dotenv::dotenv;
 use egg_mode::stream::StreamMessage;
-use log::{debug, info};
+use log::{error, info};
 use r_cache::cache::Cache;
 use teloxide::{
     adaptors::{AutoSend, DefaultParseMode},
@@ -109,7 +109,7 @@ async fn run_twitter_subscriber(
             .add_token(u.id, u.twitter_access_token.as_ref().unwrap())
             .await
         {
-            debug!("add twitter token: {:?}", e);
+            error!("add twitter token: {:?}", e);
             if e.to_string().contains("expired") {
                 user_model::update_user(
                     &db_pool.get().unwrap(),
@@ -119,19 +119,9 @@ async fn run_twitter_subscriber(
                     },
                 )
                 .unwrap();
-                if tg_bot
-                    .send_message(u.id, escape(&e.to_string()))
-                    .await
-                    .is_err()
-                {
-                    user_model::update_user(
-                        &db_pool.get().unwrap(),
-                        User {
-                            telegram_status: false,
-                            ..u.clone()
-                        },
-                    )
-                    .unwrap();
+                let res = tg_bot.send_message(u.id, escape(&e.to_string())).await;
+                if let Err(err) = res {
+                    error!("telegram@{} {:?}", &u.id, &err);
                 }
             }
         }

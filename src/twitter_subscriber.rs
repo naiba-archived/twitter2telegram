@@ -5,7 +5,7 @@ use std::{
 
 use egg_mode::stream::StreamMessage;
 use futures::{FutureExt, TryStreamExt};
-use log::{debug, warn};
+use log::{error, info, warn};
 use teloxide::{
     adaptors::{AutoSend, DefaultParseMode},
     prelude::Requester,
@@ -115,9 +115,12 @@ impl TwitterSubscriber {
                 }
                 let tg = ts_read.tg_bot.clone();
                 drop(ts_read);
-                debug!("Send {} to {:?}", &msg, users);
+                info!("Send {} to {:?}", &msg, users);
                 for tg_user_id in users {
-                    let _ = tg.send_message(tg_user_id.clone(), &msg).await;
+                    let res = tg.send_message(tg_user_id.clone(), &msg).await;
+                    if res.is_err() {
+                        error!("telegram@{} {:?}", &tg_user_id, res.err().unwrap());
+                    }
                 }
             }
         }
@@ -236,7 +239,7 @@ impl TwitterSubscriber {
             let _ = subscribe_tx.send(t).await;
         }
         // 给用户一个通知
-        let _ = tg_bot
+        let res = tg_bot
             .send_message(
                 user_id,
                 escape(
@@ -244,6 +247,9 @@ impl TwitterSubscriber {
                 ),
             )
             .await;
+        if res.is_err() {
+            error!("telegram@{} {:?}", &user_id, res.err().unwrap());
+        }
         Ok(())
     }
     pub async fn subscribe(
@@ -268,7 +274,7 @@ impl TwitterSubscriber {
                 let (tx, rx) = tokio::sync::oneshot::channel::<()>();
                 ctx.end_tx = Some(tx);
                 drop(ts_writer);
-                debug!("Twitter {:?} subscribe", &follows);
+                info!("Twitter {:?} subscribe", &follows);
                 let mut stream = egg_mode::stream::filter()
                     .follow(follows.as_slice())
                     .start(&t);
@@ -300,7 +306,7 @@ impl TwitterSubscriber {
                             };
                         },
                         _ = &mut rx_fuse => {
-                            debug!("Twitter {:?} subscribe active exit", &follows);
+                            error!("Twitter {:?} subscribe active exit", &follows);
                             return;
                        },
                     };
