@@ -73,15 +73,23 @@ impl TwitterSubscriber {
             let msg = match m {
                 StreamMessage::Tweet(t) => {
                     let user = t.user.as_ref().unwrap();
-                    let retweet_user_id = {
-                        match t.retweeted_status {
-                            Some(rt) => match rt.user {
-                                Some(u) => u.id,
-                                None => 0,
-                            },
-                            None => 0,
+
+                    let mut retweet_user_id = 0;
+                    let mut tweet_url = format!(
+                        "https://twitter.com/{}/status/{:?}",
+                        &user.screen_name, t.id
+                    );
+
+                    if let Some(ts) = t.retweeted_status {
+                        if let Some(rt) = ts.user {
+                            retweet_user_id = rt.id;
+                            tweet_url = format!(
+                                "https://twitter.com/{}/status/{:?}",
+                                &rt.screen_name, ts.id
+                            );
                         }
-                    };
+                    }
+
                     // ignore people retweeting their own tweets
                     if user.id.eq(&retweet_user_id) {
                         continue;
@@ -91,13 +99,7 @@ impl TwitterSubscriber {
                         format!(
                             "{}: {}",
                             bold(&escape(&user.screen_name)),
-                            link(
-                                &format!(
-                                    "https://twitter.com/{}/status/{:?}",
-                                    &user.screen_name, t.id
-                                ),
-                                "credit"
-                            )
+                            link(&tweet_url, "credit")
                         ),
                     ))
                 }
