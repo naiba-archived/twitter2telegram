@@ -1,4 +1,9 @@
-use std::{env, sync::Arc, time::Duration};
+use std::{
+    collections::{HashMap, HashSet},
+    env,
+    sync::Arc,
+    time::Duration,
+};
 
 use diesel::{ExpressionMethods, GroupByDsl, QueryDsl, RunQueryDsl};
 use dotenv::dotenv;
@@ -7,7 +12,8 @@ use log::{error, info};
 use r_cache::cache::Cache;
 use teloxide::{
     adaptors::{AutoSend, DefaultParseMode},
-    prelude::Requester,
+    prelude::{Requester, RequesterExt},
+    types::ParseMode,
     utils::markdown::escape,
     Bot,
 };
@@ -17,8 +23,8 @@ use tokio::sync::{
 };
 
 use twitter2telegram::{
-    follow_model::Follow, schema::follows::dsl::*, schema::users::dsl::*, telegram_bot,
-    twitter_subscriber::TwitterSubscriber, user_model, DbPool,
+    blacklist_model, follow_model::Follow, schema::follows::dsl::*, schema::users::dsl::*,
+    telegram_bot, twitter_subscriber::TwitterSubscriber, user_model, DbPool,
 };
 use user_model::User;
 
@@ -34,14 +40,11 @@ async fn main() {
     let db_pool: twitter2telegram::DbPool =
         twitter2telegram::establish_connection(&env::var("DATABASE_URL").unwrap());
 
-    let args: Vec<String> = std::env::args().collect();
-    if args.len() > 1 && args[1] == "migration" {
-        info!(
-            "migration {:?}",
-            diesel_migrations::run_pending_migrations(&db_pool.get().unwrap())
-        );
-        return;
-    }
+    // auto migration
+    info!(
+        "migration {:?}",
+        diesel_migrations::run_pending_migrations(&db_pool.get().unwrap())
+    );
 
     let cache_instance: Cache<i64, egg_mode::KeyPair> =
         Cache::new(Some(Duration::from_secs(5 * 60)));
@@ -54,34 +57,54 @@ async fn main() {
         env::var("TWITTER_SECRET").unwrap(),
     );
 
-    let mut tg_bot = telegram_bot::TelegramBot::new(
+    let bot = teloxide::Bot::new(env::var("TELEGRAM_BOT_TOKEN").unwrap())
+        .parse_mode(ParseMode::MarkdownV2)
+        .auto_send();
+
+    let mut tg_ctx = telegram_bot::TelegramContext::new(
         "T2TBot".to_string(),
         cache_instance,
         db_pool.clone(),
         telegram_admin_id,
         twitter_app_token,
-        env::var("TELEGRAM_BOT_TOKEN").unwrap(),
     );
 
-    let bot_clone = tg_bot.bot.clone();
     let (tx, rx) = mpsc::channel::<StreamMessage>(100);
     let (sub_tx, sub_rx) = mpsc::channel::<String>(100);
     let sub_tx_clone = sub_tx.clone();
+
+    // 加载黑名单列表
+    let mut blacklist: HashMap<i64, HashSet<i64>> = HashMap::new();
+    let res = blacklist_model::get_all_blacklist(&db_pool.get().unwrap());
+    if let Ok(list) = res {
+        for item in list {
+            let inner_list = blacklist.get_mut(&item.user_id);
+            if let Some(inner_list) = inner_list {
+                inner_list.insert(item.twitter_user_id);
+            } else {
+                let mut inner_list = HashSet::new();
+                inner_list.insert(item.twitter_user_id);
+                blacklist.insert(item.user_id, inner_list);
+            }
+        }
+    }
+
     let ts = Arc::new(RwLock::new(TwitterSubscriber::new(
         tx,
         sub_tx_clone,
-        bot_clone,
+        bot.clone(),
+        blacklist,
     )));
 
     let ts_clone = ts.clone();
     tokio::spawn(async move { TwitterSubscriber::subscribe_worker(ts_clone, sub_rx).await });
 
     let ts_clone = ts.clone();
-    tg_bot.set_twitter_subscriber(Some(ts_clone));
+    tg_ctx.set_twitter_subscriber(Some(ts_clone));
 
-    let bot_clone = tg_bot.bot.clone();
     let ts_clone = ts.clone();
     let sub_tx_clone = sub_tx.clone();
+    let bot_clone = bot.clone();
     tokio::spawn(async {
         run_twitter_subscriber(bot_clone, sub_tx_clone, ts_clone, db_pool).await;
     });
@@ -89,7 +112,7 @@ async fn main() {
     let ts_clone = ts.clone();
     tokio::spawn(async move { TwitterSubscriber::forward_tweet(ts_clone, rx).await });
 
-    telegram_bot::run(Arc::new(tg_bot)).await;
+    telegram_bot::run(bot.clone(), Arc::new(tg_ctx)).await;
 }
 
 async fn run_twitter_subscriber(
@@ -103,6 +126,7 @@ async fn run_twitter_subscriber(
         .filter(twitter_status.eq(true))
         .load::<User>(&db_pool.get().unwrap())
         .unwrap();
+    let mut valid_user_id_vec: Vec<i64> = Vec::new();
     let mut ts_writer = ts.write().await;
     for u in &user_vec {
         if let Err(e) = ts_writer
@@ -124,13 +148,14 @@ async fn run_twitter_subscriber(
                     error!("telegram@{} {:?}", &u.id, &err);
                 }
             }
+        } else {
+            valid_user_id_vec.push(u.id);
         }
     }
-    let user_id_vec = user_vec.iter().map(|u| u.id).collect::<Vec<i64>>();
 
     // 取到所有有效用户的 follow 的 twitter id
     let follow_vec = follows
-        .filter(user_id.eq_any(user_id_vec))
+        .filter(user_id.eq_any(valid_user_id_vec))
         .group_by(twitter_user_id)
         .load::<Follow>(&db_pool.get().unwrap())
         .unwrap();

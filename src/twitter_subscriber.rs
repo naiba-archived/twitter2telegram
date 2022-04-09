@@ -8,7 +8,9 @@ use futures::{FutureExt, TryStreamExt};
 use log::{error, info, warn};
 use teloxide::{
     adaptors::{AutoSend, DefaultParseMode},
+    payloads::SendMessageSetters,
     prelude::Requester,
+    types::{InlineKeyboardButton, InlineKeyboardMarkup},
     utils::markdown::{bold, escape, link},
     Bot,
 };
@@ -17,7 +19,7 @@ use tokio::sync::{
     RwLock,
 };
 
-use crate::follow_model::Follow;
+use crate::{blacklist_model::Blacklist, follow_model::Follow};
 
 struct TwitterTokenContext {
     follows: Vec<u64>,
@@ -33,6 +35,7 @@ pub struct TwitterSubscriber {
     token_map: HashMap<String, TwitterTokenContext>,
     token_vec: Vec<String>,
     follow_map: HashMap<i64, String>,
+    blacklist_map: HashMap<i64, HashSet<i64>>,
     follow_to_twiiter: HashMap<i64, Vec<i64>>,
 }
 
@@ -41,6 +44,7 @@ impl TwitterSubscriber {
         tweet_tx: Sender<StreamMessage>,
         subscribe_tx: Sender<String>,
         tg_bot: AutoSend<DefaultParseMode<Bot>>,
+        blacklist: HashMap<i64, HashSet<i64>>,
     ) -> Self {
         TwitterSubscriber {
             tg_bot,
@@ -48,6 +52,7 @@ impl TwitterSubscriber {
             subscribe_tx,
             token_map: HashMap::new(),
             follow_map: HashMap::new(),
+            blacklist_map: blacklist,
             token_vec: Vec::new(),
             follow_to_twiiter: HashMap::new(),
         }
@@ -96,6 +101,7 @@ impl TwitterSubscriber {
                     };
                     Some((
                         user.id,
+                        retweet_user_id,
                         format!(
                             "{}: {}",
                             bold(&escape(&user.screen_name)),
@@ -105,7 +111,7 @@ impl TwitterSubscriber {
                 }
                 _ => None,
             };
-            if let Some((twitter_user_id, msg)) = msg {
+            if let Some((twitter_user_id, retweet_user_id, msg)) = msg {
                 let ts_read = ts.read().await;
                 let users = match ts_read.follow_to_twiiter.get(&(twitter_user_id as i64)) {
                     Some(users) => users.clone(),
@@ -115,11 +121,41 @@ impl TwitterSubscriber {
                     drop(ts_read);
                     continue;
                 }
+                let mut tg_user_to_send = Vec::new();
+                // 检查黑名单列表
+                for tg_user_id in users {
+                    if let Some(blacklist) = ts_read.blacklist_map.get(&(tg_user_id as i64)) {
+                        if blacklist.contains(&(retweet_user_id as i64)) {
+                            continue;
+                        }
+                    }
+                    tg_user_to_send.push(tg_user_id);
+                }
                 let tg = ts_read.tg_bot.clone();
                 drop(ts_read);
-                info!("Send {} to {:?}", &msg, users);
-                for tg_user_id in users {
-                    let res = tg.send_message(tg_user_id.clone(), &msg).await;
+
+                let mut inline_buttons = Vec::new();
+                if retweet_user_id > 0 {
+                    inline_buttons.push(InlineKeyboardButton::callback(
+                        "🚫 RT".to_string(),
+                        format!("/BlockTwitterID {}", retweet_user_id),
+                    ));
+                    inline_buttons.push(InlineKeyboardButton::callback(
+                        "👀 RT".to_string(),
+                        format!("/FollowTwitterID {}", retweet_user_id),
+                    ));
+                }
+                inline_buttons.push(InlineKeyboardButton::callback(
+                    "Unfollow".to_string(),
+                    format!("/UnfollowTwitterID {}", twitter_user_id),
+                ));
+                let markup = InlineKeyboardMarkup::new(vec![inline_buttons]);
+
+                for tg_user_id in tg_user_to_send {
+                    let res = tg
+                        .send_message(tg_user_id.clone(), &msg)
+                        .reply_markup(markup.clone())
+                        .await;
                     if res.is_err() {
                         error!("telegram@{} {:?}", &tg_user_id, res.err().unwrap());
                     }
@@ -185,6 +221,24 @@ impl TwitterSubscriber {
             followers.unwrap().push(f.user_id);
         }
         Ok(minimum.token.clone())
+    }
+    pub async fn add_to_blacklist(
+        &mut self,
+        user_id: i64,
+        b: Blacklist,
+    ) -> Result<(), anyhow::Error> {
+        let list = self.blacklist_map.get_mut(&user_id);
+        if list.is_none() {
+            let list = HashSet::from([b.twitter_user_id]);
+            self.blacklist_map.insert(user_id, list);
+        } else {
+            let list = list.unwrap();
+            if list.contains(&b.twitter_user_id) {
+                return Ok(());
+            }
+            list.insert(b.twitter_user_id);
+        }
+        Ok(())
     }
     pub fn remove_follow_id(&mut self, user_id: i64, twitter_id: i64) -> String {
         if !self.follow_to_twiiter.contains_key(&twitter_id) {
@@ -298,8 +352,10 @@ impl TwitterSubscriber {
                                     // 再检查一下 token 有效性，如果确认无效，走删除 token 流程
                                     let res = Self::check_token_valid(&token).await;
                                     if res.is_err() || !res.unwrap() {
-                                        // TODO check err
-                                        let _ = Self::remove_token(ts.clone(), &token).await;
+                                        let res = Self::remove_token(ts.clone(), &token).await;
+                                        if let Err(e) = res {
+                                            error!("Twitter {:?} remove token error {:?}", &follows, e);
+                                        }
                                         return;
                                     }
                                     tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;

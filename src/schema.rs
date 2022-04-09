@@ -1,4 +1,14 @@
 table! {
+    blacklists (id) {
+        id -> Nullable<Integer>,
+        user_id -> BigInt,
+        twitter_user_id -> BigInt,
+        twitter_username -> Text,
+        created_at -> Timestamp,
+    }
+}
+
+table! {
     follows (id) {
         id -> Nullable<Integer>,
         user_id -> BigInt,
@@ -19,6 +29,7 @@ table! {
 }
 
 allow_tables_to_appear_in_same_query!(
+    blacklists,
     follows,
     users,
 );

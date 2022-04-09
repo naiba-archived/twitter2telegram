@@ -1,3 +1,4 @@
+pub mod blacklist_model;
 pub mod follow_model;
 pub mod schema;
 pub mod telegram_bot;
