@@ -9,7 +9,7 @@ RUN export DEBIAN_FRONTEND="noninteractive" && apt update && apt install -y ca-c
 
 WORKDIR /bot
 COPY ./target/release/twitter2telegram ./bot
-COPY ./migrations ./
+COPY ./migrations ./migrations
 
 VOLUME ["/bot/data"]
 CMD ["/bot/bot"]
