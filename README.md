@@ -2,6 +2,10 @@
 
 Forward tweets to telegram.
 
+|  Menu  |  Tweet  |
+|------|------|
+|![menu](https://s1.ax1x.com/2022/04/09/LP568f.png)|![tweet](https://s1.ax1x.com/2022/04/09/LPI9G6.png)|
+
 ## Usage
 
 1. choose a folder to run your bot, like `mkdir some_bot && cd some_bot`
