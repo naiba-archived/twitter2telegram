@@ -43,8 +43,12 @@ enum Command {
     UnfollowTwitterID(i64),
     #[command(description = "Block from Twitter ID _\\(parameter: a huge number\\)_")]
     BlockTwitterID(i64),
+    #[command(description = "Unblock from Twitter ID _\\(parameter: a huge number\\)_")]
+    UnblockTwitterID(i64),
     #[command(description = "List subscribed Twitter users")]
     ListFollowedTwitterID,
+    #[command(description = "List block retweet Twitter users")]
+    ListBlockedRT,
     #[command(description = "*OWNER* Add a user", parse_with = "split")]
     AddUser {
         telegram_id: i64,
@@ -316,6 +320,45 @@ async fn command_handler(
             )
             .await?
         }
+        Command::UnblockTwitterID(x_twitter_user_id) => {
+            if !user_pre_check().await {
+                return Ok(());
+            };
+            let user = user.unwrap();
+            if !user.twitter_status {
+                bot.send_message(
+                    message.chat.id,
+                    "Please get the Twitter authorization link and authorize first",
+                )
+                .await?;
+                return Ok(());
+            };
+            if x_twitter_user_id.le(&0) {
+                bot.send_message(message.chat.id, "Incorrect ID").await?;
+                return Ok(());
+            }
+            let res =
+                blacklist_model::unblock(&ctx.db_pool.get().unwrap(), user.id, x_twitter_user_id);
+            bot.send_message(
+                message.chat.id,
+                match res {
+                    Ok(count) => {
+                        ctx.twitter_subscriber
+                            .as_ref()
+                            .unwrap()
+                            .write()
+                            .await
+                            .unblock(user.id, x_twitter_user_id)
+                            .await;
+                        format!("Unblock successfully, affecting {:?} records", count)
+                    }
+                    Err(err) => {
+                        format!("Failure, error {:?}", err)
+                    }
+                },
+            )
+            .await?
+        }
         Command::UnfollowTwitterID(x_twitter_user_id) => {
             if !user_pre_check().await {
                 return Ok(());
@@ -379,6 +422,37 @@ async fn command_handler(
             let follow_vec = res.unwrap();
             let mut msg = escape("You are currently subscribed to the following accounts.\n");
             follow_vec.iter().for_each(|f| {
+                msg.push_str(&format!(
+                    "\\* *{}* _{:?}_\n",
+                    escape(&f.twitter_username),
+                    f.twitter_user_id
+                ))
+            });
+            bot.send_message(message.chat.id, msg).await?
+        }
+        Command::ListBlockedRT => {
+            if !user_pre_check().await {
+                return Ok(());
+            };
+            let user = user.unwrap();
+            if !user.twitter_status {
+                bot.send_message(
+                    message.chat.id,
+                    "Please get the Twitter authorization link and authorize first",
+                )
+                .await?;
+                return Ok(());
+            };
+            let res =
+                blacklist_model::get_blacklist_by_user_id(&ctx.db_pool.get().unwrap(), user.id);
+            if res.is_err() {
+                bot.send_message(message.chat.id, format!("Failure, error {:?}", res.err()))
+                    .await?;
+                return Ok(());
+            }
+            let list = res.unwrap();
+            let mut msg = escape("Your blacklist.\n");
+            list.iter().for_each(|f| {
                 msg.push_str(&format!(
                     "\\* *{}* _{:?}_\n",
                     escape(&f.twitter_username),

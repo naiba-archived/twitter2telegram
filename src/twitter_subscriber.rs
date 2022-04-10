@@ -222,6 +222,12 @@ impl TwitterSubscriber {
         }
         Ok(minimum.token.clone())
     }
+    pub async fn unblock(&mut self, user_id: i64, twitter_id: i64) {
+        let list = self.blacklist_map.get_mut(&user_id);
+        if let Some(list) = list {
+            list.remove(&twitter_id);
+        }
+    }
     pub async fn add_to_blacklist(
         &mut self,
         user_id: i64,

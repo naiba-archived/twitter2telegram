@@ -13,6 +13,20 @@ pub struct Blacklist {
     pub created_at: NaiveDateTime,
 }
 
+pub fn unblock(
+    conn: &SqliteConnection,
+    x_user_id: i64,
+    x_twitter_user_id: i64,
+) -> Result<usize, anyhow::Error> {
+    let res = diesel::delete(blacklists.filter(user_id.eq(x_user_id)))
+        .filter(twitter_user_id.eq(x_twitter_user_id))
+        .execute(conn);
+    match res {
+        Ok(cound) => Ok(cound),
+        Err(e) => Err(anyhow!("{:?}", e)),
+    }
+}
+
 pub fn block_user(conn: &SqliteConnection, b: Blacklist) -> Result<usize, anyhow::Error> {
     let res = diesel::insert_into(blacklists)
         .values((
@@ -30,6 +44,19 @@ pub fn block_user(conn: &SqliteConnection, b: Blacklist) -> Result<usize, anyhow
 
 pub fn get_all_blacklist(conn: &SqliteConnection) -> Result<Vec<Blacklist>, anyhow::Error> {
     let res = blacklists.load::<Blacklist>(conn);
+    match res {
+        Ok(vec) => Ok(vec),
+        Err(e) => Err(anyhow!("{:?}", e)),
+    }
+}
+
+pub fn get_blacklist_by_user_id(
+    conn: &SqliteConnection,
+    x_user_id: i64,
+) -> Result<Vec<Blacklist>, anyhow::Error> {
+    let res = blacklists
+        .filter(user_id.eq(x_user_id))
+        .load::<Blacklist>(conn);
     match res {
         Ok(vec) => Ok(vec),
         Err(e) => Err(anyhow!("{:?}", e)),
