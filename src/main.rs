@@ -46,8 +46,18 @@ async fn main() {
         diesel_migrations::run_pending_migrations(&db_pool.get().unwrap())
     );
 
-    let cache_instance: Cache<i64, egg_mode::KeyPair> =
-        Cache::new(Some(Duration::from_secs(5 * 60)));
+    let cache_instance: Arc<Cache<i64, egg_mode::KeyPair>> =
+        Arc::new(Cache::new(Some(Duration::from_secs(5 * 60))));
+    tokio::spawn({
+        let cache = Arc::clone(&cache_instance);
+        async move {
+            loop {
+                tokio::time::sleep(Duration::from_secs(10 * 60)).await;
+                cache.remove_expired().await;
+            }
+        }
+    });
+
     let telegram_admin_id: i64 = env::var("TELEGRAM_ADMIN_ID")
         .unwrap()
         .parse::<i64>()
@@ -110,7 +120,20 @@ async fn main() {
     });
 
     let ts_clone = ts.clone();
-    tokio::spawn(async move { TwitterSubscriber::forward_tweet(ts_clone, rx).await });
+    let forward_history_cache: Arc<Cache<String, ()>> =
+        Arc::new(Cache::new(Some(Duration::from_secs(60 * 60 * 24))));
+    tokio::spawn({
+        let cache = Arc::clone(&forward_history_cache);
+        async move {
+            loop {
+                tokio::time::sleep(Duration::from_secs(60 * 60)).await;
+                cache.remove_expired().await;
+            }
+        }
+    });
+    tokio::spawn(async move {
+        TwitterSubscriber::forward_tweet(forward_history_cache, ts_clone, rx).await
+    });
 
     telegram_bot::run(bot.clone(), Arc::new(tg_ctx)).await;
 }

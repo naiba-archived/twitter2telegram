@@ -6,6 +6,7 @@ use std::{
 use egg_mode::stream::StreamMessage;
 use futures::{FutureExt, TryStreamExt};
 use log::{error, info, warn};
+use r_cache::cache::Cache;
 use teloxide::{
     adaptors::{AutoSend, DefaultParseMode},
     payloads::SendMessageSetters,
@@ -71,6 +72,7 @@ impl TwitterSubscriber {
         Ok(user.screen_name.eq("Twitter"))
     }
     pub async fn forward_tweet(
+        forward_history: Arc<Cache<String, ()>>,
         ts: Arc<RwLock<TwitterSubscriber>>,
         mut tweet_rx: Receiver<StreamMessage>,
     ) {
@@ -152,6 +154,12 @@ impl TwitterSubscriber {
                 let markup = InlineKeyboardMarkup::new(vec![inline_buttons]);
 
                 for tg_user_id in tg_user_to_send {
+                    let cache_key =
+                        format!("{:x}", md5::compute(format!("{:?}-{}", tg_user_id, &msg)));
+                    if forward_history.get(&cache_key).await.is_some() {
+                        continue;
+                    }
+                    forward_history.set(cache_key, (), None).await;
                     let res = tg
                         .send_message(tg_user_id.clone(), &msg)
                         .reply_markup(markup.clone())

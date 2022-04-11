@@ -59,7 +59,7 @@ enum Command {
 pub struct TelegramContext {
     pub name: String,
     pub db_pool: DbPool,
-    pub cache: Cache<i64, egg_mode::KeyPair>,
+    pub cache: Arc<Cache<i64, egg_mode::KeyPair>>,
     pub telegram_admin_id: i64,
     pub twitter_token: KeyPair,
     pub twitter_subscriber: Option<Arc<RwLock<TwitterSubscriber>>>,
@@ -68,7 +68,7 @@ pub struct TelegramContext {
 impl TelegramContext {
     pub fn new(
         name: String,
-        cache: Cache<i64, egg_mode::KeyPair>,
+        cache: Arc<Cache<i64, egg_mode::KeyPair>>,
         db_pool: DbPool,
         telegram_admin_id: i64,
         twitter_token: KeyPair,
