@@ -3,7 +3,7 @@ use std::{
     sync::Arc,
 };
 
-use egg_mode::stream::StreamMessage;
+use egg_mode::{media::media_types::video_mp4, stream::StreamMessage};
 use futures::{FutureExt, TryStreamExt};
 use log::{error, info, warn};
 use r_cache::cache::Cache;
@@ -119,15 +119,19 @@ impl TwitterSubscriber {
                     Some((
                         user.id,
                         retweet_user_id,
-                        format!(
-                            "{}: {} {}",
-                            bold(&escape(&user.screen_name)),
-                            match video_url {
-                                Some(url) => url,
-                                None => "".to_string(),
-                            },
-                            link(&tweet_url, "credit")
-                        ),
+                        match video_url {
+                            Some(url) => format!(
+                                "{}: {} {}",
+                                bold(&escape(&user.screen_name)),
+                                link(&url, "🎬"),
+                                &t.text
+                            ),
+                            None => format!(
+                                "{}: {}",
+                                bold(&escape(&user.screen_name)),
+                                link(&tweet_url, "🔗")
+                            ),
+                        },
                     ))
                 }
                 _ => None,
