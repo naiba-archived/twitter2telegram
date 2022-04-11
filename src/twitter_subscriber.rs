@@ -58,19 +58,23 @@ impl TwitterSubscriber {
             follow_to_twiiter: HashMap::new(),
         }
     }
+
     fn token_hash(token: &str) -> String {
         format!("{:x}", md5::compute(token))
     }
+
     pub async fn subscribe_worker(ts: Arc<RwLock<TwitterSubscriber>>, mut rx: Receiver<String>) {
         while let Some(t) = rx.recv().await {
             let _ = TwitterSubscriber::subscribe(ts.clone(), t).await;
         }
     }
+
     pub async fn check_token_valid(token: &str) -> Result<bool, anyhow::Error> {
         let t: egg_mode::Token = serde_json::from_str(token)?;
         let user = egg_mode::user::show(783214, &t).await?;
         Ok(user.screen_name.eq("Twitter"))
     }
+
     pub async fn forward_tweet(
         forward_history: Arc<Cache<String, ()>>,
         ts: Arc<RwLock<TwitterSubscriber>>,
@@ -97,6 +101,17 @@ impl TwitterSubscriber {
                         }
                     }
 
+                    let mut video_url: Option<String> = None;
+                    if let Some(mut ext_media) = t.extended_entities {
+                        ext_media.media.sort_by(|m1, m2| {
+                            let m1_size = get_max_video_bitrate(m1);
+                            let m2_size = get_max_video_bitrate(m2);
+                            return m2_size.0.cmp(&m1_size.0);
+                        });
+                        let largest_video = get_max_video_bitrate(ext_media.media.first().unwrap());
+                        video_url = Some(largest_video.1);
+                    }
+
                     // ignore people retweeting their own tweets
                     if user.id.eq(&retweet_user_id) {
                         continue;
@@ -105,8 +120,12 @@ impl TwitterSubscriber {
                         user.id,
                         retweet_user_id,
                         format!(
-                            "{}: {}",
+                            "{}: {} {}",
                             bold(&escape(&user.screen_name)),
+                            match video_url {
+                                Some(url) => url,
+                                None => "".to_string(),
+                            },
                             link(&tweet_url, "credit")
                         ),
                     ))
@@ -193,6 +212,7 @@ impl TwitterSubscriber {
         );
         Ok(())
     }
+
     pub async fn add_follow(&mut self, f: Follow) -> Result<String, anyhow::Error> {
         if self.token_vec.len().eq(&0) {
             return Err(anyhow::anyhow!("No valid Twitter token"));
@@ -230,12 +250,14 @@ impl TwitterSubscriber {
         }
         Ok(minimum.token.clone())
     }
+
     pub async fn unblock(&mut self, user_id: i64, twitter_id: i64) {
         let list = self.blacklist_map.get_mut(&user_id);
         if let Some(list) = list {
             list.remove(&twitter_id);
         }
     }
+
     pub async fn add_to_blacklist(
         &mut self,
         user_id: i64,
@@ -254,6 +276,7 @@ impl TwitterSubscriber {
         }
         Ok(())
     }
+
     pub fn remove_follow_id(&mut self, user_id: i64, twitter_id: i64) -> String {
         if !self.follow_to_twiiter.contains_key(&twitter_id) {
             return "".to_string();
@@ -276,6 +299,7 @@ impl TwitterSubscriber {
         ctx.end_tx.take().unwrap().send(()).unwrap();
         ctx.token.clone()
     }
+
     pub async fn remove_token(
         ts: Arc<RwLock<TwitterSubscriber>>,
         token: &str,
@@ -322,6 +346,7 @@ impl TwitterSubscriber {
         }
         Ok(())
     }
+
     pub async fn subscribe(
         ts: Arc<RwLock<TwitterSubscriber>>,
         token: String,
@@ -386,5 +411,23 @@ impl TwitterSubscriber {
             }
         });
         Ok(())
+    }
+}
+
+fn get_max_video_bitrate(m: &egg_mode::entities::MediaEntity) -> (i32, String) {
+    match &m.video_info {
+        Some(info) => {
+            if info.variants.len() == 0 {
+                (0, "".to_string())
+            } else {
+                let mut variants = info.variants.clone();
+                variants.sort_by(|v1, v2| v2.bitrate.cmp(&v1.bitrate));
+                (
+                    variants.first().unwrap().bitrate.unwrap(),
+                    variants.first().unwrap().url.clone(),
+                )
+            }
+        }
+        None => (0, "".to_string()),
     }
 }
