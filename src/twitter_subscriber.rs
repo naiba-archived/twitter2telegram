@@ -3,7 +3,7 @@ use std::{
     sync::Arc,
 };
 
-use egg_mode::stream::StreamMessage;
+use egg_mode::{entities::MediaEntity, stream::StreamMessage};
 use futures::{FutureExt, TryStreamExt};
 use log::{error, info, warn};
 use r_cache::cache::Cache;
@@ -102,13 +102,17 @@ impl TwitterSubscriber {
                     }
 
                     let mut video_url: Option<String> = None;
-                    if let Some(mut ext_media) = t.extended_entities {
-                        ext_media.media.sort_by(|m1, m2| {
+                    let ext_media: Option<Vec<MediaEntity>> = match t.extended_entities {
+                        Some(ext) => Some(ext.media),
+                        None => t.entities.media,
+                    };
+                    if let Some(mut ext_media) = ext_media {
+                        ext_media.sort_by(|m1, m2| {
                             let m1_size = get_max_video_bitrate(m1);
                             let m2_size = get_max_video_bitrate(m2);
                             return m2_size.0.cmp(&m1_size.0);
                         });
-                        let largest_video = get_max_video_bitrate(ext_media.media.first().unwrap());
+                        let largest_video = get_max_video_bitrate(ext_media.first().unwrap());
                         video_url = Some(largest_video.1);
                     }
 
@@ -419,19 +423,13 @@ impl TwitterSubscriber {
 }
 
 fn get_max_video_bitrate(m: &egg_mode::entities::MediaEntity) -> (i32, String) {
-    match &m.video_info {
-        Some(info) => {
-            if info.variants.len() == 0 {
-                (0, "".to_string())
-            } else {
-                let mut variants = info.variants.clone();
-                variants.sort_by(|v1, v2| v2.bitrate.cmp(&v1.bitrate));
-                (
-                    variants.first().unwrap().bitrate.unwrap(),
-                    variants.first().unwrap().url.clone(),
-                )
-            }
-        }
-        None => (0, "".to_string()),
+    if m.video_info.is_none() || m.video_info.as_ref().unwrap().variants.len() == 0 {
+        return (0, "".to_string());
     }
+    let mut variants = m.video_info.as_ref().unwrap().variants.clone();
+    variants.sort_by(|v1, v2| v2.bitrate.cmp(&v1.bitrate));
+    (
+        variants.first().unwrap().bitrate.unwrap(),
+        variants.first().unwrap().url.clone(),
+    )
 }
