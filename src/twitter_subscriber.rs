@@ -113,7 +113,7 @@ impl TwitterSubscriber {
                             return m2_size.0.cmp(&m1_size.0);
                         });
                         let largest_video = get_max_video_bitrate(ext_media.first().unwrap());
-                        video_url = Some(largest_video.1);
+                        video_url = largest_video.1;
                     }
 
                     // ignore people retweeting their own tweets
@@ -422,14 +422,14 @@ impl TwitterSubscriber {
     }
 }
 
-fn get_max_video_bitrate(m: &egg_mode::entities::MediaEntity) -> (i32, String) {
+fn get_max_video_bitrate(m: &egg_mode::entities::MediaEntity) -> (i32, Option<String>) {
     if m.video_info.is_none() || m.video_info.as_ref().unwrap().variants.len() == 0 {
-        return (0, "".to_string());
+        return (0, None);
     }
     let mut variants = m.video_info.as_ref().unwrap().variants.clone();
     variants.sort_by(|v1, v2| v2.bitrate.cmp(&v1.bitrate));
     (
         variants.first().unwrap().bitrate.unwrap(),
-        variants.first().unwrap().url.clone(),
+        Some(variants.first().unwrap().url.clone()),
     )
 }
