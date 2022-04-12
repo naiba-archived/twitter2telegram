@@ -128,7 +128,7 @@ impl TwitterSubscriber {
                                 "{}: {} {}",
                                 bold(&escape(&user.screen_name)),
                                 link(&url, "🎬"),
-                                &t.text
+                                escape(&t.text)
                             ),
                             None => format!(
                                 "{}: {}",
