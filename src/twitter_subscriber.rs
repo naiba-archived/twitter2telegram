@@ -123,6 +123,7 @@ impl TwitterSubscriber {
                     Some((
                         user.id,
                         retweet_user_id,
+                        tweet_url.clone(),
                         match video_url {
                             Some(url) => format!(
                                 "{}: {} {}",
@@ -140,7 +141,7 @@ impl TwitterSubscriber {
                 }
                 _ => None,
             };
-            if let Some((twitter_user_id, retweet_user_id, msg)) = msg {
+            if let Some((twitter_user_id, retweet_user_id, tweet_url, msg)) = msg {
                 let ts_read = ts.read().await;
                 let users = match ts_read.follow_to_twiiter.get(&(twitter_user_id as i64)) {
                     Some(users) => users.clone(),
@@ -151,13 +152,22 @@ impl TwitterSubscriber {
                     continue;
                 }
                 let mut tg_user_to_send = Vec::new();
-                // 检查黑名单列表
                 for tg_user_id in users {
+                    // 检查黑名单列表
                     if let Some(blacklist) = ts_read.blacklist_map.get(&(tg_user_id as i64)) {
                         if blacklist.contains(&(retweet_user_id as i64)) {
                             continue;
                         }
                     }
+                    // 检查推送记录
+                    let cache_key = format!(
+                        "{:x}",
+                        md5::compute(format!("{:?}-{}", tg_user_id, &tweet_url))
+                    );
+                    if forward_history.get(&cache_key).await.is_some() {
+                        continue;
+                    }
+                    forward_history.set(cache_key, (), None).await;
                     tg_user_to_send.push(tg_user_id);
                 }
                 let tg = ts_read.tg_bot.clone();
@@ -181,12 +191,6 @@ impl TwitterSubscriber {
                 let markup = InlineKeyboardMarkup::new(vec![inline_buttons]);
 
                 for tg_user_id in tg_user_to_send {
-                    let cache_key =
-                        format!("{:x}", md5::compute(format!("{:?}-{}", tg_user_id, &msg)));
-                    if forward_history.get(&cache_key).await.is_some() {
-                        continue;
-                    }
-                    forward_history.set(cache_key, (), None).await;
                     let res = tg
                         .send_message(tg_user_id.clone(), &msg)
                         .reply_markup(markup.clone())
