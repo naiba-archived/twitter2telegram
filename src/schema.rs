@@ -5,6 +5,8 @@ table! {
         twitter_user_id -> BigInt,
         twitter_username -> Text,
         created_at -> Timestamp,
+        #[sql_name = "type"]
+        type_ -> Integer,
     }
 }
 

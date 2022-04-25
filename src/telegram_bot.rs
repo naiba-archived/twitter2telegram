@@ -39,16 +39,22 @@ enum Command {
         description = "Subscribe to [Twitter ID](https://tweeterid.com) _\\(parameter: a huge number\\)_"
     )]
     FollowTwitterID(i64),
-    #[command(description = "Unsubscribe from Twitter ID _\\(parameter: a huge number\\)_")]
+    #[command(description = "Unsubscribe from Twitter ID _twitterID_")]
     UnfollowTwitterID(i64),
-    #[command(description = "Block from Twitter ID _\\(parameter: a huge number\\)_")]
-    BlockTwitterID(i64),
-    #[command(description = "Unblock from Twitter ID _\\(parameter: a huge number\\)_")]
-    UnblockTwitterID(i64),
+    #[command(
+        description = "Block from Twitter ID _blockType twitterID_",
+        parse_with = "split"
+    )]
+    BlockTwitterID { x_type: i32, x_twitter_user_id: i64 },
+    #[command(
+        description = "Unblock from Twitter ID _blockType twitterID_",
+        parse_with = "split"
+    )]
+    UnblockTwitterID { x_type: i32, x_twitter_user_id: i64 },
+    #[command(description = "List block retweet Twitter users")]
+    ListBlockedTwitterID(i32),
     #[command(description = "List subscribed Twitter users")]
     ListFollowedTwitterID,
-    #[command(description = "List block retweet Twitter users")]
-    ListBlockedRT,
     #[command(description = "*OWNER* Add a user", parse_with = "split")]
     AddUser {
         telegram_id: i64,
@@ -271,7 +277,10 @@ async fn command_handler(
             )
             .await?
         }
-        Command::BlockTwitterID(x_twitter_user_id) => {
+        Command::BlockTwitterID {
+            x_type,
+            x_twitter_user_id,
+        } => {
             if !user_pre_check().await {
                 return Ok(());
             };
@@ -296,6 +305,7 @@ async fn command_handler(
                 id: None,
                 user_id: user.id,
                 twitter_user_id: x_twitter_user_id,
+                type_: x_type,
                 twitter_username: twitter_user.screen_name.clone(),
                 created_at: NaiveDateTime::from_timestamp(now.as_secs() as i64, now.subsec_nanos()),
             };
@@ -320,7 +330,10 @@ async fn command_handler(
             )
             .await?
         }
-        Command::UnblockTwitterID(x_twitter_user_id) => {
+        Command::UnblockTwitterID {
+            x_type,
+            x_twitter_user_id,
+        } => {
             if !user_pre_check().await {
                 return Ok(());
             };
@@ -337,8 +350,12 @@ async fn command_handler(
                 bot.send_message(message.chat.id, "Incorrect ID").await?;
                 return Ok(());
             }
-            let res =
-                blacklist_model::unblock(&ctx.db_pool.get().unwrap(), user.id, x_twitter_user_id);
+            let res = blacklist_model::unblock(
+                &ctx.db_pool.get().unwrap(),
+                user.id,
+                x_twitter_user_id,
+                x_type,
+            );
             bot.send_message(
                 message.chat.id,
                 match res {
@@ -348,7 +365,7 @@ async fn command_handler(
                             .unwrap()
                             .write()
                             .await
-                            .unblock(user.id, x_twitter_user_id)
+                            .unblock(user.id, x_twitter_user_id, x_type)
                             .await;
                         format!("Unblock successfully, affecting {:?} records", count)
                     }
@@ -430,7 +447,7 @@ async fn command_handler(
             });
             bot.send_message(message.chat.id, msg).await?
         }
-        Command::ListBlockedRT => {
+        Command::ListBlockedTwitterID(x_type) => {
             if !user_pre_check().await {
                 return Ok(());
             };
@@ -443,8 +460,11 @@ async fn command_handler(
                 .await?;
                 return Ok(());
             };
-            let res =
-                blacklist_model::get_blacklist_by_user_id(&ctx.db_pool.get().unwrap(), user.id);
+            let res = blacklist_model::get_blacklist_by_user_id(
+                &ctx.db_pool.get().unwrap(),
+                user.id,
+                x_type,
+            );
             if res.is_err() {
                 bot.send_message(message.chat.id, format!("Failure, error {:?}", res.err()))
                     .await?;
@@ -454,7 +474,7 @@ async fn command_handler(
             let mut msg = escape("Your blacklist.\n");
             list.iter().for_each(|f| {
                 msg.push_str(&format!(
-                    "\\* *{}* _{:?}_\n",
+                    "\\* {} {:?}\n",
                     escape(&f.twitter_username),
                     f.twitter_user_id
                 ))

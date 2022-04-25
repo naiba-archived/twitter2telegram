@@ -84,17 +84,18 @@ async fn main() {
     let sub_tx_clone = sub_tx.clone();
 
     // 加载黑名单列表
-    let mut blacklist: HashMap<i64, HashSet<i64>> = HashMap::new();
+    let mut blacklist: HashMap<i64, HashSet<(i64, i32)>> = HashMap::new();
     let res = blacklist_model::get_all_blacklist(&db_pool.get().unwrap());
     if let Ok(list) = res {
         for item in list {
             let inner_list = blacklist.get_mut(&item.user_id);
             if let Some(inner_list) = inner_list {
-                inner_list.insert(item.twitter_user_id);
+                inner_list.insert((item.twitter_user_id, item.type_));
             } else {
-                let mut inner_list = HashSet::new();
-                inner_list.insert(item.twitter_user_id);
-                blacklist.insert(item.user_id, inner_list);
+                blacklist.insert(
+                    item.user_id,
+                    HashSet::from([(item.twitter_user_id, item.type_)]),
+                );
             }
         }
     }

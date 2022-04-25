@@ -20,7 +20,10 @@ use tokio::sync::{
     RwLock,
 };
 
-use crate::{blacklist_model::Blacklist, follow_model::Follow};
+use crate::{
+    blacklist_model::{self, Blacklist},
+    follow_model::Follow,
+};
 
 struct TwitterTokenContext {
     follows: Vec<u64>,
@@ -36,7 +39,7 @@ pub struct TwitterSubscriber {
     token_map: HashMap<String, TwitterTokenContext>,
     token_vec: Vec<String>,
     follow_map: HashMap<i64, String>,
-    blacklist_map: HashMap<i64, HashSet<i64>>,
+    blacklist_map: HashMap<i64, HashSet<(i64, i32)>>,
     follow_to_twiiter: HashMap<i64, Vec<i64>>,
 }
 
@@ -45,7 +48,7 @@ impl TwitterSubscriber {
         tweet_tx: Sender<StreamMessage>,
         subscribe_tx: Sender<String>,
         tg_bot: AutoSend<DefaultParseMode<Bot>>,
-        blacklist: HashMap<i64, HashSet<i64>>,
+        blacklist: HashMap<i64, HashSet<(i64, i32)>>,
     ) -> Self {
         TwitterSubscriber {
             tg_bot,
@@ -153,10 +156,28 @@ impl TwitterSubscriber {
                 }
                 let mut tg_user_to_send = Vec::new();
                 for tg_user_id in users {
-                    // 检查黑名单列表
                     if let Some(blacklist) = ts_read.blacklist_map.get(&(tg_user_id as i64)) {
-                        if blacklist.contains(&(retweet_user_id as i64)) {
-                            continue;
+                        if retweet_user_id.ne(&0) {
+                            // 检查转推的 Author 黑名单
+                            if blacklist
+                                .get(&(
+                                    retweet_user_id as i64,
+                                    blacklist_model::BlacklistType::BlockTwitter.toi32(),
+                                ))
+                                .is_some()
+                            {
+                                continue;
+                            }
+                            // 检查转推黑名单
+                            if blacklist
+                                .get(&(
+                                    twitter_user_id as i64,
+                                    blacklist_model::BlacklistType::BlockRT.toi32(),
+                                ))
+                                .is_some()
+                            {
+                                continue;
+                            }
                         }
                     }
                     // 检查推送记录
@@ -176,16 +197,20 @@ impl TwitterSubscriber {
                 let mut inline_buttons = Vec::new();
                 if retweet_user_id > 0 {
                     inline_buttons.push(InlineKeyboardButton::callback(
-                        "🚫 RT".to_string(),
-                        format!("/BlockTwitterID {}", retweet_user_id),
+                        "🚫RTer".to_string(),
+                        format!("/BlockTwitterID 2 {}", retweet_user_id),
                     ));
                     inline_buttons.push(InlineKeyboardButton::callback(
-                        "👀 RT".to_string(),
+                        "👀RTer".to_string(),
                         format!("/FollowTwitterID {}", retweet_user_id),
+                    ));
+                    inline_buttons.push(InlineKeyboardButton::callback(
+                        "🚫RT".to_string(),
+                        format!("/BlockTwitterID 1 {}", retweet_user_id),
                     ));
                 }
                 inline_buttons.push(InlineKeyboardButton::callback(
-                    "Unfollow".to_string(),
+                    "❌".to_string(),
                     format!("/UnfollowTwitterID {}", twitter_user_id),
                 ));
                 let markup = InlineKeyboardMarkup::new(vec![inline_buttons]);
@@ -263,10 +288,10 @@ impl TwitterSubscriber {
         Ok(minimum.token.clone())
     }
 
-    pub async fn unblock(&mut self, user_id: i64, twitter_id: i64) {
+    pub async fn unblock(&mut self, user_id: i64, twitter_id: i64, x_type: i32) {
         let list = self.blacklist_map.get_mut(&user_id);
         if let Some(list) = list {
-            list.remove(&twitter_id);
+            list.remove(&(twitter_id, x_type));
         }
     }
 
@@ -276,15 +301,14 @@ impl TwitterSubscriber {
         b: Blacklist,
     ) -> Result<(), anyhow::Error> {
         let list = self.blacklist_map.get_mut(&user_id);
+        let item = (b.twitter_user_id, b.type_);
         if list.is_none() {
-            let list = HashSet::from([b.twitter_user_id]);
-            self.blacklist_map.insert(user_id, list);
+            self.blacklist_map.insert(user_id, HashSet::from([item]));
         } else {
-            let list = list.unwrap();
-            if list.contains(&b.twitter_user_id) {
+            if list.as_ref().unwrap().contains(&item) {
                 return Ok(());
             }
-            list.insert(b.twitter_user_id);
+            list.unwrap().insert(item);
         }
         Ok(())
     }
