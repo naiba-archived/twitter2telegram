@@ -206,7 +206,7 @@ impl TwitterSubscriber {
                     ));
                     inline_buttons.push(InlineKeyboardButton::callback(
                         "🚫RT".to_string(),
-                        format!("/BlockTwitterID 1 {}", retweet_user_id),
+                        format!("/BlockTwitterID 1 {}", twitter_user_id),
                     ));
                 }
                 inline_buttons.push(InlineKeyboardButton::callback(
