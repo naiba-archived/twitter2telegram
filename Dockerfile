@@ -2,7 +2,7 @@ FROM ubuntu:latest
 ENV TZ="Asia/Shanghai"
 
 RUN export DEBIAN_FRONTEND="noninteractive" && apt update && apt install -y ca-certificates tzdata \
-    libsqlite3-dev && \
+    libsqlite3-dev libssl-dev && \
     update-ca-certificates && \
     ln -fs /usr/share/zoneinfo/$TZ /etc/localtime && \
     dpkg-reconfigure tzdata
