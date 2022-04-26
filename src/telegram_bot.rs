@@ -9,9 +9,9 @@ use egg_mode::KeyPair;
 use r_cache::cache::Cache;
 use teloxide::{
     adaptors::DefaultParseMode,
-    prelude2::*,
+    prelude::*,
     types::{MessageKind, Update},
-    utils::{command::BotCommand, markdown::escape},
+    utils::{command::BotCommands, markdown::escape},
 };
 use tokio::sync::RwLock;
 
@@ -22,7 +22,7 @@ use crate::{
     DbPool, GIT_HASH,
 };
 
-#[derive(BotCommand, Clone, Debug)]
+#[derive(BotCommands, Clone, Debug)]
 #[command(
     description = "T2TBot\\#HASH: bot that retweets tweets to telegram, all parameters should be appended to the command, separated by spaces, e\\.g\\. `/SetTwitterVerifyCode 1234567`, *BEFORE YOU START*, you should complete step 1 \\-\\-\\> 2\\.\n"
 )]
@@ -102,7 +102,11 @@ async fn command_handler(
 ) -> Result<(), anyhow::Error> {
     let sender = message.from().unwrap();
 
-    let user = match user_model::get_user_by_id(&ctx.db_pool.get().unwrap(), sender.id) {
+    let teloxide::types::UserId(user_id) = sender.id;
+    let user = match user_model::get_user_by_id(
+        &ctx.db_pool.get().unwrap(),
+        user_id.try_into().unwrap(),
+    ) {
         Ok(u) => Some(u),
         Err(_) => None,
     };
@@ -123,8 +127,10 @@ async fn command_handler(
         true
     };
 
+    let teloxide::types::UserId(sender_id) = sender.id;
+
     let admin_pre_check = || async {
-        if !sender.id.eq(&ctx.telegram_admin_id) {
+        if !sender_id.eq(&(ctx.telegram_admin_id as u64)) {
             bot.send_message(message.chat.id, "You are not an admin")
                 .await
                 .unwrap();
@@ -141,6 +147,7 @@ async fn command_handler(
             bot.send_message(
                 message.chat.id,
                 Command::descriptions()
+                    .to_string()
                     .replace(" - ", " \\- ")
                     .replace("HASH", &GIT_HASH[..8]),
             )

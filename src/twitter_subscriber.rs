@@ -11,7 +11,7 @@ use teloxide::{
     adaptors::{AutoSend, DefaultParseMode},
     payloads::SendMessageSetters,
     prelude::Requester,
-    types::{InlineKeyboardButton, InlineKeyboardMarkup},
+    types::{InlineKeyboardButton, InlineKeyboardMarkup, UserId},
     utils::markdown::{bold, escape, link},
     Bot,
 };
@@ -217,7 +217,7 @@ impl TwitterSubscriber {
 
                 for tg_user_id in tg_user_to_send {
                     let res = tg
-                        .send_message(tg_user_id.clone(), &msg)
+                        .send_message(UserId(tg_user_id.clone() as u64), &msg)
                         .reply_markup(markup.clone())
                         .await;
                     if res.is_err() {
@@ -371,7 +371,7 @@ impl TwitterSubscriber {
         // 给用户一个通知
         let res = tg_bot
             .send_message(
-                user_id,
+                UserId(user_id as u64),
                 escape(
                     "Your Twitter authorization has expired, you will not receive future messages.",
                 ),

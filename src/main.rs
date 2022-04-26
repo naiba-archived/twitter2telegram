@@ -13,7 +13,7 @@ use r_cache::cache::Cache;
 use teloxide::{
     adaptors::{AutoSend, DefaultParseMode},
     prelude::{Requester, RequesterExt},
-    types::ParseMode,
+    types::{ParseMode, UserId},
     utils::markdown::escape,
     Bot,
 };
@@ -167,7 +167,9 @@ async fn run_twitter_subscriber(
                     },
                 )
                 .unwrap();
-                let res = tg_bot.send_message(u.id, escape(&e.to_string())).await;
+                let res = tg_bot
+                    .send_message(UserId(u.id as u64), escape(&e.to_string()))
+                    .await;
                 if let Err(err) = res {
                     error!("telegram@{} {:?}", &u.id, &err);
                 }
