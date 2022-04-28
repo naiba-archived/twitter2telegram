@@ -15,39 +15,37 @@ use teloxide::{
 };
 use tokio::sync::RwLock;
 
-use crate::{
+use crate::models::{
     blacklist_model, follow_model,
-    twitter_subscriber::TwitterSubscriber,
     user_model::{self, User},
-    DbPool, GIT_HASH,
+    DbPool,
 };
+use crate::twitter_subscriber::TwitterSubscriber;
+use crate::GIT_HASH;
 
 #[derive(BotCommands, Clone, Debug)]
-#[command(
-    description = "T2TBot\\#HASH: bot that retweets tweets to telegram, all parameters should be appended to the command, separated by spaces, e\\.g\\. `/SetTwitterVerifyCode 1234567`, *BEFORE YOU START*, you should complete step 1 \\-\\-\\> 2\\.\n"
-)]
+#[command(description = "T2TBot\\#HASH: bot that retweets tweets to telegram.\n
+    usage: */command* _param1_ _param2_\n
+    buttonAction: 🚫RTer(Block retweets from this retweet's author), 👀RTer(Follow this retweet's author), ❌RT(Unfollow retweet's sender), ❌(Unfollow sender) \n
+    ")]
 enum Command {
     #[command(rename = "lowercase", description = "Menu")]
     Start,
-    #[command(description = "Step1: Get the authorization URL for twitter")]
+    #[command(description = "Get the authorization URL for twitter")]
     GetTwitterAuthURL,
-    #[command(
-        description = "Step2: Set the Twitter authorisation code _\\(parameter: 7 digits\\)_"
-    )]
+    #[command(description = "_twitterAuthCode_")]
     SetTwitterVerifyCode(String),
-    #[command(
-        description = "Subscribe to [Twitter ID](https://tweeterid.com) _\\(parameter: a huge number\\)_"
-    )]
+    #[command(description = "_twitterID_ Subscribe to [Twitter ID](https://tweeterid.com)")]
     FollowTwitterID(i64),
-    #[command(description = "Unsubscribe from Twitter ID _twitterID_")]
+    #[command(description = "_twitterID_ Unsubscribe from Twitter ID")]
     UnfollowTwitterID(i64),
     #[command(
-        description = "Block from Twitter ID _blockType twitterID_",
+        description = "_blockType twitterID_ Block from Twitter ID ",
         parse_with = "split"
     )]
     BlockTwitterID { x_type: i32, x_twitter_user_id: i64 },
     #[command(
-        description = "Unblock from Twitter ID _blockType twitterID_",
+        description = "_blockType twitterID_ Unblock from Twitter ID",
         parse_with = "split"
     )]
     UnblockTwitterID { x_type: i32, x_twitter_user_id: i64 },
@@ -55,7 +53,7 @@ enum Command {
     ListBlockedTwitterID(i32),
     #[command(description = "List subscribed Twitter users")]
     ListFollowedTwitterID,
-    #[command(description = "*OWNER* Add a user", parse_with = "split")]
+    #[command(description = "*OnlyOwner* Add a user", parse_with = "split")]
     AddUser {
         telegram_id: i64,
         custom_label: String,

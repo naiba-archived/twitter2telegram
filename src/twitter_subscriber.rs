@@ -20,7 +20,7 @@ use tokio::sync::{
     RwLock,
 };
 
-use crate::{
+use crate::models::{
     blacklist_model::{self, Blacklist},
     follow_model::Follow,
 };
@@ -85,63 +85,7 @@ impl TwitterSubscriber {
     ) {
         while let Some(m) = tweet_rx.recv().await {
             let msg = match m {
-                StreamMessage::Tweet(t) => {
-                    let user = t.user.as_ref().unwrap();
-
-                    let mut retweet_user_id = 0;
-                    let mut tweet_url = format!(
-                        "https://twitter.com/{}/status/{:?}",
-                        &user.screen_name, t.id
-                    );
-
-                    if let Some(ts) = t.retweeted_status {
-                        if let Some(rt) = ts.user {
-                            retweet_user_id = rt.id;
-                            tweet_url = format!(
-                                "https://twitter.com/{}/status/{:?}",
-                                &rt.screen_name, ts.id
-                            );
-                        }
-                    }
-
-                    let mut video_url: Option<String> = None;
-                    let ext_media: Option<Vec<MediaEntity>> = match t.extended_entities {
-                        Some(ext) => Some(ext.media),
-                        None => t.entities.media,
-                    };
-                    if let Some(mut ext_media) = ext_media {
-                        ext_media.sort_by(|m1, m2| {
-                            let m1_size = get_max_video_bitrate(m1);
-                            let m2_size = get_max_video_bitrate(m2);
-                            return m2_size.0.cmp(&m1_size.0);
-                        });
-                        let largest_video = get_max_video_bitrate(ext_media.first().unwrap());
-                        video_url = largest_video.1;
-                    }
-
-                    // ignore people retweeting their own tweets
-                    if user.id.eq(&retweet_user_id) {
-                        continue;
-                    };
-                    Some((
-                        user.id,
-                        retweet_user_id,
-                        tweet_url.clone(),
-                        match video_url {
-                            Some(url) => format!(
-                                "{}: {} {}",
-                                bold(&escape(&user.screen_name)),
-                                link(&url, "🎬"),
-                                escape(&t.text)
-                            ),
-                            None => format!(
-                                "{}: {}",
-                                bold(&escape(&user.screen_name)),
-                                link(&tweet_url, "🔗")
-                            ),
-                        },
-                    ))
-                }
+                StreamMessage::Tweet(t) => format_tweet(t),
                 _ => None,
             };
             if let Some((twitter_user_id, retweet_user_id, tweet_url, msg)) = msg {
@@ -156,6 +100,17 @@ impl TwitterSubscriber {
                 }
                 let mut tg_user_to_send = Vec::new();
                 for tg_user_id in users {
+                    // 检查重复推送记录
+                    let cache_key = format!(
+                        "{:x}",
+                        md5::compute(format!("{:?}-{}", tg_user_id, &tweet_url))
+                    );
+                    if forward_history.get(&cache_key).await.is_some() {
+                        continue;
+                    }
+                    forward_history.set(cache_key, (), None).await;
+
+                    // 检查直推转推黑名单
                     if let Some(blacklist) = ts_read.blacklist_map.get(&(tg_user_id as i64)) {
                         if retweet_user_id.ne(&0) {
                             // 检查转推的 Author 黑名单
@@ -180,40 +135,16 @@ impl TwitterSubscriber {
                             }
                         }
                     }
-                    // 检查推送记录
-                    let cache_key = format!(
-                        "{:x}",
-                        md5::compute(format!("{:?}-{}", tg_user_id, &tweet_url))
-                    );
-                    if forward_history.get(&cache_key).await.is_some() {
-                        continue;
-                    }
-                    forward_history.set(cache_key, (), None).await;
+
+                    // 添加至通知列表
                     tg_user_to_send.push(tg_user_id);
                 }
                 let tg = ts_read.tg_bot.clone();
                 drop(ts_read);
 
-                let mut inline_buttons = Vec::new();
-                if retweet_user_id > 0 {
-                    inline_buttons.push(InlineKeyboardButton::callback(
-                        "🚫RTer".to_string(),
-                        format!("/BlockTwitterID 2 {}", retweet_user_id),
-                    ));
-                    inline_buttons.push(InlineKeyboardButton::callback(
-                        "👀RTer".to_string(),
-                        format!("/FollowTwitterID {}", retweet_user_id),
-                    ));
-                    inline_buttons.push(InlineKeyboardButton::callback(
-                        "🚫RT".to_string(),
-                        format!("/BlockTwitterID 1 {}", twitter_user_id),
-                    ));
-                }
-                inline_buttons.push(InlineKeyboardButton::callback(
-                    "❌".to_string(),
-                    format!("/UnfollowTwitterID {}", twitter_user_id),
-                ));
-                let markup = InlineKeyboardMarkup::new(vec![inline_buttons]);
+                let markup = InlineKeyboardMarkup::new(vec![
+                    get_inline_buttons(retweet_user_id, &ts, twitter_user_id).await,
+                ]);
 
                 for tg_user_id in tg_user_to_send {
                     let res = tg
@@ -448,6 +379,97 @@ impl TwitterSubscriber {
         });
         Ok(())
     }
+}
+
+async fn get_inline_buttons(
+    retweet_user_id: u64,
+    ts: &Arc<RwLock<TwitterSubscriber>>,
+    twitter_user_id: u64,
+) -> Vec<InlineKeyboardButton> {
+    let mut inline_buttons = Vec::new();
+    if retweet_user_id > 0 {
+        let ts_read = ts.read().await;
+        inline_buttons.push(InlineKeyboardButton::callback(
+            "🚫RTer".to_string(),
+            format!("/BlockTwitterID 2 {}", retweet_user_id),
+        ));
+        if let None = ts_read.follow_map.get(&(retweet_user_id as i64)) {
+            inline_buttons.push(InlineKeyboardButton::callback(
+                "👀RTer".to_string(),
+                format!("/FollowTwitterID {}", retweet_user_id),
+            ));
+        } else {
+            inline_buttons.push(InlineKeyboardButton::callback(
+                "❌RT".to_string(),
+                format!("/UnfollowTwitterID {}", retweet_user_id),
+            ));
+        }
+        inline_buttons.push(InlineKeyboardButton::callback(
+            "🚫RT".to_string(),
+            format!("/BlockTwitterID 1 {}", twitter_user_id),
+        ));
+        inline_buttons.push(InlineKeyboardButton::callback(
+            "❌".to_string(),
+            format!("/UnfollowTwitterID {}", twitter_user_id),
+        ));
+    } else {
+        inline_buttons.push(InlineKeyboardButton::callback(
+            "Unfollow".to_string(),
+            format!("/UnfollowTwitterID {}", twitter_user_id),
+        ));
+    }
+    inline_buttons
+}
+
+fn format_tweet(t: egg_mode::tweet::Tweet) -> Option<(u64, u64, String, String)> {
+    let user = t.user.as_ref().unwrap();
+    let mut retweet_user_id = 0;
+    let mut tweet_url = format!(
+        "https://twitter.com/{}/status/{:?}",
+        &user.screen_name, t.id
+    );
+    if let Some(ts) = t.retweeted_status {
+        if let Some(rt) = ts.user {
+            retweet_user_id = rt.id;
+            tweet_url = format!("https://twitter.com/{}/status/{:?}", &rt.screen_name, ts.id);
+        }
+    }
+    // 忽略自己转发自己的推文
+    if user.id.eq(&retweet_user_id) {
+        return None;
+    };
+    let mut video_url: Option<String> = None;
+    let ext_media: Option<Vec<MediaEntity>> = match t.extended_entities {
+        Some(ext) => Some(ext.media),
+        None => t.entities.media,
+    };
+    if let Some(mut ext_media) = ext_media {
+        ext_media.sort_by(|m1, m2| {
+            let m1_size = get_max_video_bitrate(m1);
+            let m2_size = get_max_video_bitrate(m2);
+            return m2_size.0.cmp(&m1_size.0);
+        });
+        let largest_video = get_max_video_bitrate(ext_media.first().unwrap());
+        video_url = largest_video.1;
+    }
+    Some((
+        user.id,
+        retweet_user_id,
+        tweet_url.clone(),
+        match video_url {
+            Some(url) => format!(
+                "{}: {} {}",
+                bold(&escape(&user.screen_name)),
+                link(&url, "🎬"),
+                escape(&t.text)
+            ),
+            None => format!(
+                "{}: {}",
+                bold(&escape(&user.screen_name)),
+                link(&tweet_url, "🔗")
+            ),
+        },
+    ))
 }
 
 fn get_max_video_bitrate(m: &egg_mode::entities::MediaEntity) -> (i32, Option<String>) {

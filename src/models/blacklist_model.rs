@@ -1,4 +1,4 @@
-use crate::schema::blacklists::dsl::*;
+use crate::models::schema::blacklists::dsl::*;
 use anyhow::anyhow;
 use chrono::NaiveDateTime;
 use diesel::prelude::*;

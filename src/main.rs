@@ -23,10 +23,17 @@ use tokio::sync::{
 };
 
 use twitter2telegram::{
-    blacklist_model, follow_model::Follow, schema::follows::dsl::*, schema::users::dsl::*,
-    telegram_bot, twitter_subscriber::TwitterSubscriber, user_model, DbPool,
+    models::{
+        blacklist_model, establish_connection,
+        follow_model::Follow,
+        schema::follows::dsl::*,
+        schema::users::dsl::*,
+        user_model::{self, User},
+        DbPool,
+    },
+    telegram_bot,
+    twitter_subscriber::TwitterSubscriber,
 };
-use user_model::User;
 
 #[macro_use]
 extern crate diesel_migrations;
@@ -37,8 +44,7 @@ async fn main() {
     dotenv().ok();
     pretty_env_logger::init_timed();
 
-    let db_pool: twitter2telegram::DbPool =
-        twitter2telegram::establish_connection(&env::var("DATABASE_URL").unwrap());
+    let db_pool: DbPool = establish_connection(&env::var("DATABASE_URL").unwrap());
 
     // auto migration
     info!(
@@ -122,7 +128,7 @@ async fn main() {
 
     let ts_clone = ts.clone();
     let forward_history_cache: Arc<Cache<String, ()>> =
-        Arc::new(Cache::new(Some(Duration::from_secs(60 * 60 * 24))));
+        Arc::new(Cache::new(Some(Duration::from_secs(60 * 60 * 24 * 3))));
     tokio::spawn({
         let cache = Arc::clone(&forward_history_cache);
         async move {

@@ -1,4 +1,4 @@
-use crate::schema::users::dsl::*;
+use crate::models::schema::users::dsl::*;
 use anyhow::anyhow;
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
