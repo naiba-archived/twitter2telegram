@@ -24,10 +24,18 @@ use crate::twitter_subscriber::TwitterSubscriber;
 use crate::GIT_HASH;
 
 #[derive(BotCommands, Clone, Debug)]
-#[command(description = "T2TBot\\#HASH: bot that retweets tweets to telegram.\n
-    usage: */command* _param1_ _param2_\n
-    buttonAction: 🚫RTer(Block retweets from this retweet's author), 👀RTer(Follow this retweet's author), ❌RT(Unfollow retweet's sender), ❌(Unfollow sender) \n
-    ")]
+#[command(description = "T2TBot\\#HASH: bot that retweets tweets to telegram\\.
+
+🚫RTer\\(Block retweets from this retweet's author\\)
+👀RTer\\(Follow this retweet's author\\)
+❌RT\\(Unfollow retweet's sender\\)
+❌\\(Unfollow sender\\)
+
+blockType:
+  1 - block all retweets from this user\\.
+  2 - block all tweets from this user\\.
+
+usage: */command* _param1_ _param2_")]
 enum Command {
     #[command(rename = "lowercase", description = "Menu")]
     Start,
@@ -40,7 +48,7 @@ enum Command {
     #[command(description = "_twitterID_ Unsubscribe from Twitter ID")]
     UnfollowTwitterID(i64),
     #[command(
-        description = "_blockType twitterID_ Block from Twitter ID ",
+        description = "_blockType twitterID_ Block from Twitter ID",
         parse_with = "split"
     )]
     BlockTwitterID { x_type: i32, x_twitter_user_id: i64 },
@@ -115,7 +123,7 @@ async fn command_handler(
                 message.chat.id,
                 format!(
                     "User {:?} not authorized, please contact administrator to add permissions",
-                    sender.id
+                    sender.id.0
                 ),
             )
             .await
