@@ -485,13 +485,18 @@ async fn command_handler(
             }
             let list = res.unwrap();
             let mut msg = escape("Your blacklist.\n");
-            list.iter().for_each(|f| {
-                msg.push_str(&format!(
-                    "\\* {} {:?}\n",
-                    escape(&f.twitter_username),
-                    f.twitter_user_id
-                ))
+
+            list.chunks(50).for_each(|chunk| {
+                chunk.iter().for_each(|f| {
+                    msg.push_str(&format!(
+                        "\\* {} {:?}\n",
+                        escape(&f.twitter_username),
+                        f.twitter_user_id
+                    ))
+                });
+                msg.clear();
             });
+
             bot.send_message(message.chat.id, msg).await?
         }
         Command::AddUser {
