@@ -484,6 +484,7 @@ async fn command_handler(
                 return Ok(());
             }
             let list = res.unwrap();
+            let mut msg_list: Vec<String> = Vec::new();
             let mut msg = escape("Your blacklist.\n");
 
             list.chunks(50).for_each(|chunk| {
@@ -494,10 +495,15 @@ async fn command_handler(
                         f.twitter_user_id
                     ))
                 });
+                msg_list.push(msg.clone());
                 msg.clear();
             });
 
-            bot.send_message(message.chat.id, msg).await?
+            for msg in msg_list {
+                bot.send_message(message.chat.id, msg).await?;
+            }
+
+            return Ok(());
         }
         Command::AddUser {
             telegram_id,
