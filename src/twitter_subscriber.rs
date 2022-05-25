@@ -331,6 +331,7 @@ impl TwitterSubscriber {
                 let follows = ctx.follows.clone();
                 // 如果此 Token 下没有分配的 follow 了，直接退出
                 if follows.is_empty() {
+                    info!("Twitter token {:?} no follows exit", hash);
                     return;
                 }
                 let (tx, rx) = tokio::sync::oneshot::channel::<()>();
