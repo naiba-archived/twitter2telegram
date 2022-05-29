@@ -322,7 +322,9 @@ impl TwitterSubscriber {
         let hash = Self::token_hash(&token);
         tokio::spawn(async move {
             loop {
+                info!("Twitter token {:?} subscribe get writer", hash);
                 let mut ts_writer = ts.write().await;
+                info!("Twitter token {:?} subscribe geted writer", hash);
                 let ctx = ts_writer.token_map.get_mut(&hash).unwrap();
                 // 停掉之前的 follow 线程
                 if let Some(ch) = ctx.end_tx.as_ref() {
@@ -423,6 +425,11 @@ async fn get_inline_buttons(
 }
 
 fn format_tweet(t: egg_mode::tweet::Tweet) -> Option<(u64, u64, String, String)> {
+    // 忽略三天前的 tweet
+    if t.created_at < chrono::Utc::now() - chrono::Duration::days(3) {
+        return None;
+    }
+
     let user = t.user.as_ref().unwrap();
     let mut retweet_user_id = 0;
     let mut tweet_url = format!(
@@ -435,10 +442,12 @@ fn format_tweet(t: egg_mode::tweet::Tweet) -> Option<(u64, u64, String, String)>
             tweet_url = format!("https://twitter.com/{}/status/{:?}", &rt.screen_name, ts.id);
         }
     }
+
     // 忽略自己转发自己的推文
     if user.id.eq(&retweet_user_id) {
         return None;
     };
+
     let mut video_url: Option<String> = None;
     let ext_media: Option<Vec<MediaEntity>> = match t.extended_entities {
         Some(ext) => Some(ext.media),

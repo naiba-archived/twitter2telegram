@@ -1,6 +1,6 @@
 # T2T Bot
 
-Forward tweets to telegram.
+Forward tweets to telegram. (tweets from 3 days ago will be ignored)
 
 |  Menu  |  Tweet  |
 |------|------|
