@@ -425,13 +425,9 @@ async fn get_inline_buttons(
 }
 
 fn format_tweet(t: egg_mode::tweet::Tweet) -> Option<(u64, u64, String, String)> {
-    // 忽略三天前的 tweet
-    if t.created_at < chrono::Utc::now() - chrono::Duration::days(3) {
-        return None;
-    }
-
     let user = t.user.as_ref().unwrap();
     let mut retweet_user_id = 0;
+    let mut real_created_at = t.created_at;
     let mut tweet_url = format!(
         "https://twitter.com/{}/status/{:?}",
         &user.screen_name, t.id
@@ -440,7 +436,13 @@ fn format_tweet(t: egg_mode::tweet::Tweet) -> Option<(u64, u64, String, String)>
         if let Some(rt) = ts.user {
             retweet_user_id = rt.id;
             tweet_url = format!("https://twitter.com/{}/status/{:?}", &rt.screen_name, ts.id);
+            real_created_at = rt.created_at;
         }
+    }
+
+    // 忽略三天前的 tweet
+    if real_created_at < chrono::Utc::now() - chrono::Duration::days(3) {
+        return None;
     }
 
     // 忽略自己转发自己的推文
