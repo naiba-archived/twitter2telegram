@@ -433,10 +433,10 @@ fn format_tweet(t: egg_mode::tweet::Tweet) -> Option<(u64, u64, String, String)>
         &user.screen_name, t.id
     );
     if let Some(ts) = t.retweeted_status {
+        real_created_at = ts.created_at;
         if let Some(rt) = ts.user {
             retweet_user_id = rt.id;
             tweet_url = format!("https://twitter.com/{}/status/{:?}", &rt.screen_name, ts.id);
-            real_created_at = rt.created_at;
         }
     }
 
