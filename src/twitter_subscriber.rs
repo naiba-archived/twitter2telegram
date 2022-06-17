@@ -38,8 +38,9 @@ pub struct TwitterSubscriber {
     subscribe_tx: Sender<String>,
     token_map: HashMap<String, TwitterTokenContext>,
     token_vec: Vec<String>,
-    follow_map: HashMap<i64, String>,
+    twitter_sub_to_token_map: HashMap<i64, String>,
     blacklist_map: HashMap<i64, HashSet<(i64, i32)>>,
+    follow_map: HashMap<i64, HashSet<i64>>,
     follow_to_twiiter: HashMap<i64, Vec<i64>>,
 }
 
@@ -48,15 +49,17 @@ impl TwitterSubscriber {
         tweet_tx: Sender<StreamMessage>,
         subscribe_tx: Sender<String>,
         tg_bot: AutoSend<DefaultParseMode<Bot>>,
-        blacklist: HashMap<i64, HashSet<(i64, i32)>>,
+        blacklist_map: HashMap<i64, HashSet<(i64, i32)>>,
+        follow_map: HashMap<i64, HashSet<i64>>,
     ) -> Self {
         TwitterSubscriber {
             tg_bot,
             tweet_tx,
             subscribe_tx,
             token_map: HashMap::new(),
-            follow_map: HashMap::new(),
-            blacklist_map: blacklist,
+            twitter_sub_to_token_map: HashMap::new(),
+            blacklist_map,
+            follow_map,
             token_vec: Vec::new(),
             follow_to_twiiter: HashMap::new(),
         }
@@ -142,11 +145,10 @@ impl TwitterSubscriber {
                 let tg = ts_read.tg_bot.clone();
                 drop(ts_read);
 
-                let markup = InlineKeyboardMarkup::new(vec![
-                    get_inline_buttons(retweet_user_id, &ts, twitter_user_id).await,
-                ]);
-
                 for tg_user_id in tg_user_to_send {
+                    let markup = InlineKeyboardMarkup::new(vec![
+                        get_inline_buttons(tg_user_id, retweet_user_id, &ts, twitter_user_id).await,
+                    ]);
                     let res = tg
                         .send_message(UserId(tg_user_id.clone() as u64), &msg)
                         .reply_markup(markup.clone())
@@ -156,6 +158,116 @@ impl TwitterSubscriber {
                     }
                 }
             }
+        }
+    }
+
+    pub async fn add_follow(&mut self, f: Follow) -> Result<String, anyhow::Error> {
+        if self.token_vec.len().eq(&0) {
+            return Err(anyhow::anyhow!("No valid Twitter token"));
+        }
+
+        // 添加到个人订阅列表
+        if let Some(list) = self.follow_map.get_mut(&f.user_id) {
+            if !list.contains(&f.twitter_user_id) {
+                list.insert(f.twitter_user_id);
+            }
+        } else {
+            self.follow_map
+                .insert(f.user_id, HashSet::from([f.twitter_user_id]));
+        }
+
+        // 检查是否存在于全局订阅列表
+        if self
+            .twitter_sub_to_token_map
+            .contains_key(&f.twitter_user_id)
+        {
+            return Ok("".to_string());
+        }
+
+        // 添加到全局订阅列表
+        let first = &self.token_map.get(&self.token_vec[0]).unwrap();
+        // 检查第 0 个 follow 的 id 是否是 0，如果是直接插入
+        let mut minimum_follow_token = self.token_vec[0].clone();
+        let mut minimum_follow_count = first.follows.len();
+        if first.follows.len() > 0 {
+            // 将 follow 分配给 token
+            for t in &self.token_vec {
+                let count = self.token_map.get(t).unwrap().follows.len();
+                if count.lt(&minimum_follow_count) {
+                    minimum_follow_count = count;
+                    minimum_follow_token = t.to_string();
+                    if minimum_follow_count == 0 {
+                        break;
+                    }
+                }
+            }
+        }
+        self.twitter_sub_to_token_map
+            .insert(f.twitter_user_id, minimum_follow_token.clone());
+        let minimum = self.token_map.get_mut(&minimum_follow_token).unwrap();
+        minimum.follows.push(f.twitter_user_id as u64);
+        let followers = self.follow_to_twiiter.get_mut(&f.twitter_user_id);
+        if followers.is_none() {
+            self.follow_to_twiiter
+                .insert(f.twitter_user_id, vec![f.user_id]);
+        } else {
+            followers.unwrap().push(f.user_id);
+        }
+        Ok(minimum.token.clone())
+    }
+
+    pub fn remove_follow(&mut self, user_id: i64, twitter_id: i64) -> String {
+        if !self.follow_to_twiiter.contains_key(&twitter_id) {
+            return "".to_string();
+        }
+
+        // 删掉订阅关系
+        self.follow_map
+            .get_mut(&user_id)
+            .unwrap()
+            .remove(&twitter_id);
+
+        // 从全局订阅记录删掉
+        let users = self.follow_to_twiiter.get_mut(&twitter_id).unwrap();
+        let index = users.iter().position(|f| f.eq(&user_id)).unwrap();
+        users.remove(index);
+
+        // 如果还有其他人订阅直接退出
+        if users.len().gt(&0) {
+            return "".to_string();
+        };
+
+        let hash = self.twitter_sub_to_token_map.get(&twitter_id).unwrap();
+        let ctx = self.token_map.get_mut(hash).unwrap();
+        let index = ctx
+            .follows
+            .iter()
+            .position(|f| f.eq(&(twitter_id as u64)))
+            .unwrap();
+        ctx.follows.remove(index);
+        self.twitter_sub_to_token_map.remove(&twitter_id);
+        ctx.end_tx.take().unwrap().send(()).unwrap();
+        ctx.token.clone()
+    }
+
+    pub async fn block(&mut self, user_id: i64, b: Blacklist) -> Result<(), anyhow::Error> {
+        let list = self.blacklist_map.get_mut(&user_id);
+        let item = (b.twitter_user_id, b.type_);
+        if list.is_none() {
+            self.blacklist_map.insert(user_id, HashSet::from([item]));
+        } else {
+            if list.as_ref().unwrap().contains(&item) {
+                return Ok(());
+            }
+            list.unwrap().insert(item);
+        }
+        Ok(())
+    }
+
+    pub async fn unblock(&mut self, user_id: i64, twitter_id: i64, x_type: i32) {
+        let list = self.blacklist_map.get_mut(&user_id);
+        if let Some(list) = list {
+            list.remove(&(twitter_id, x_type));
         }
     }
 
@@ -181,92 +293,6 @@ impl TwitterSubscriber {
         Ok(())
     }
 
-    pub async fn add_follow(&mut self, f: Follow) -> Result<String, anyhow::Error> {
-        if self.token_vec.len().eq(&0) {
-            return Err(anyhow::anyhow!("No valid Twitter token"));
-        }
-        if self.follow_map.contains_key(&f.twitter_user_id) {
-            return Ok("".to_string());
-        }
-        let first = &self.token_map.get(&self.token_vec[0]).unwrap();
-        // 检查第 0 个 follow 的 id 是否是 0，如果是直接插入
-        let mut minimum_follow_token = self.token_vec[0].clone();
-        let mut minimum_follow_count = first.follows.len();
-        if first.follows.len() > 0 {
-            // 将 follow 分配给 token
-            for t in &self.token_vec {
-                let count = self.token_map.get(t).unwrap().follows.len();
-                if count.lt(&minimum_follow_count) {
-                    minimum_follow_count = count;
-                    minimum_follow_token = t.to_string();
-                    if minimum_follow_count == 0 {
-                        break;
-                    }
-                }
-            }
-        }
-        self.follow_map
-            .insert(f.twitter_user_id, minimum_follow_token.clone());
-        let minimum = self.token_map.get_mut(&minimum_follow_token).unwrap();
-        minimum.follows.push(f.twitter_user_id as u64);
-        let followers = self.follow_to_twiiter.get_mut(&f.twitter_user_id);
-        if followers.is_none() {
-            self.follow_to_twiiter
-                .insert(f.twitter_user_id, vec![f.user_id]);
-        } else {
-            followers.unwrap().push(f.user_id);
-        }
-        Ok(minimum.token.clone())
-    }
-
-    pub async fn unblock(&mut self, user_id: i64, twitter_id: i64, x_type: i32) {
-        let list = self.blacklist_map.get_mut(&user_id);
-        if let Some(list) = list {
-            list.remove(&(twitter_id, x_type));
-        }
-    }
-
-    pub async fn add_to_blacklist(
-        &mut self,
-        user_id: i64,
-        b: Blacklist,
-    ) -> Result<(), anyhow::Error> {
-        let list = self.blacklist_map.get_mut(&user_id);
-        let item = (b.twitter_user_id, b.type_);
-        if list.is_none() {
-            self.blacklist_map.insert(user_id, HashSet::from([item]));
-        } else {
-            if list.as_ref().unwrap().contains(&item) {
-                return Ok(());
-            }
-            list.unwrap().insert(item);
-        }
-        Ok(())
-    }
-
-    pub fn remove_follow_id(&mut self, user_id: i64, twitter_id: i64) -> String {
-        if !self.follow_to_twiiter.contains_key(&twitter_id) {
-            return "".to_string();
-        }
-        let users = self.follow_to_twiiter.get_mut(&twitter_id).unwrap();
-        let index = users.iter().position(|f| f.eq(&user_id)).unwrap();
-        users.remove(index);
-        if users.len().gt(&0) {
-            return "".to_string();
-        };
-        let hash = self.follow_map.get(&twitter_id).unwrap();
-        let ctx = self.token_map.get_mut(hash).unwrap();
-        let index = ctx
-            .follows
-            .iter()
-            .position(|f| f.eq(&(twitter_id as u64)))
-            .unwrap();
-        ctx.follows.remove(index);
-        self.follow_map.remove(&twitter_id);
-        ctx.end_tx.take().unwrap().send(()).unwrap();
-        ctx.token.clone()
-    }
-
     pub async fn remove_token(
         ts: Arc<RwLock<TwitterSubscriber>>,
         token: &str,
@@ -286,7 +312,7 @@ impl TwitterSubscriber {
         let mut tokens_need_to_react = HashSet::new();
         for f in follows {
             let mut ts_writer = ts.write().await;
-            let using_token = ts_writer.remove_follow_id(user_id, f as i64);
+            let using_token = ts_writer.remove_follow(user_id, f as i64);
             drop(ts_writer);
             if using_token.ne("") && using_token.ne(token) {
                 tokens_need_to_react.insert(using_token);
@@ -385,6 +411,7 @@ impl TwitterSubscriber {
 }
 
 async fn get_inline_buttons(
+    tg_user_id: i64,
     retweet_user_id: u64,
     ts: &Arc<RwLock<TwitterSubscriber>>,
     twitter_user_id: u64,
@@ -396,7 +423,12 @@ async fn get_inline_buttons(
             "🚫RTer".to_string(),
             format!("/BlockTwitterID 2 {}", retweet_user_id),
         ));
-        if let None = ts_read.follow_map.get(&(retweet_user_id as i64)) {
+        if ts_read
+            .follow_map
+            .get(&tg_user_id)
+            .unwrap()
+            .contains(&(retweet_user_id as i64))
+        {
             inline_buttons.push(InlineKeyboardButton::callback(
                 "👀RTer".to_string(),
                 format!("/FollowTwitterID {}", retweet_user_id),

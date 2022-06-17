@@ -25,7 +25,7 @@ use tokio::sync::{
 use twitter2telegram::{
     models::{
         blacklist_model, establish_connection,
-        follow_model::Follow,
+        follow_model::{self, Follow},
         schema::follows::dsl::*,
         schema::users::dsl::*,
         user_model::{self, User},
@@ -90,18 +90,32 @@ async fn main() {
     let sub_tx_clone = sub_tx.clone();
 
     // 加载黑名单列表
-    let mut blacklist: HashMap<i64, HashSet<(i64, i32)>> = HashMap::new();
+    let mut blacklist_map: HashMap<i64, HashSet<(i64, i32)>> = HashMap::new();
     let res = blacklist_model::get_all_blacklist(&db_pool.get().unwrap());
     if let Ok(list) = res {
         for item in list {
-            let inner_list = blacklist.get_mut(&item.user_id);
+            let inner_list = blacklist_map.get_mut(&item.user_id);
             if let Some(inner_list) = inner_list {
                 inner_list.insert((item.twitter_user_id, item.type_));
             } else {
-                blacklist.insert(
+                blacklist_map.insert(
                     item.user_id,
                     HashSet::from([(item.twitter_user_id, item.type_)]),
                 );
+            }
+        }
+    }
+
+    // 加载订阅列表
+    let mut follow_map: HashMap<i64, HashSet<i64>> = HashMap::new();
+    let res = follow_model::get_all_follows(&db_pool.get().unwrap());
+    if let Ok(list) = res {
+        for item in list {
+            let inner_list = follow_map.get_mut(&item.user_id);
+            if let Some(inner_list) = inner_list {
+                inner_list.insert(item.twitter_user_id);
+            } else {
+                follow_map.insert(item.user_id, HashSet::from([item.twitter_user_id]));
             }
         }
     }
@@ -110,7 +124,8 @@ async fn main() {
         tx,
         sub_tx_clone,
         bot.clone(),
-        blacklist,
+        blacklist_map,
+        follow_map,
     )));
 
     let ts_clone = ts.clone();

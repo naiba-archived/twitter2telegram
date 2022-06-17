@@ -332,7 +332,7 @@ async fn command_handler(
                             .unwrap()
                             .write()
                             .await
-                            .add_to_blacklist(user.id, block)
+                            .block(user.id, block)
                             .await?;
                         format!("Added successfully, affecting {:?} records", count)
                     }
@@ -410,7 +410,7 @@ async fn command_handler(
                 follow_model::unfollow(&ctx.db_pool.get().unwrap(), user.id, x_twitter_user_id);
             let ts = ctx.twitter_subscriber.as_ref().unwrap();
             let mut ts_write = ts.write().await;
-            let token = ts_write.remove_follow_id(user.id, x_twitter_user_id);
+            let token = ts_write.remove_follow(user.id, x_twitter_user_id);
             drop(ts_write);
             if token.ne("") {
                 TwitterSubscriber::subscribe(ts.clone(), token)

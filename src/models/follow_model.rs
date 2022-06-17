@@ -52,3 +52,11 @@ pub fn get_follows_by_user_id(
         Err(e) => Err(anyhow!("{:?}", e)),
     }
 }
+
+pub fn get_all_follows(conn: &SqliteConnection) -> Result<Vec<Follow>, anyhow::Error> {
+    let res = follows.load::<Follow>(conn);
+    match res {
+        Ok(vec) => Ok(vec),
+        Err(e) => Err(anyhow!("{:?}", e)),
+    }
+}
