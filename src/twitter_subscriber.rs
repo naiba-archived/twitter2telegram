@@ -50,7 +50,6 @@ impl TwitterSubscriber {
         subscribe_tx: Sender<String>,
         tg_bot: AutoSend<DefaultParseMode<Bot>>,
         blacklist_map: HashMap<i64, HashSet<(i64, i32)>>,
-        follow_map: HashMap<i64, HashSet<i64>>,
     ) -> Self {
         TwitterSubscriber {
             tg_bot,
@@ -59,7 +58,7 @@ impl TwitterSubscriber {
             token_map: HashMap::new(),
             twitter_sub_to_token_map: HashMap::new(),
             blacklist_map,
-            follow_map,
+            follow_map: HashMap::new(),
             token_vec: Vec::new(),
             follow_to_twiiter: HashMap::new(),
         }
@@ -423,7 +422,7 @@ async fn get_inline_buttons(
             "🚫RTer".to_string(),
             format!("/BlockTwitterID 2 {}", retweet_user_id),
         ));
-        if ts_read
+        if !ts_read
             .follow_map
             .get(&tg_user_id)
             .unwrap()

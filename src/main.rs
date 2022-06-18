@@ -25,7 +25,7 @@ use tokio::sync::{
 use twitter2telegram::{
     models::{
         blacklist_model, establish_connection,
-        follow_model::{self, Follow},
+        follow_model::Follow,
         schema::follows::dsl::*,
         schema::users::dsl::*,
         user_model::{self, User},
@@ -106,26 +106,11 @@ async fn main() {
         }
     }
 
-    // 加载订阅列表
-    let mut follow_map: HashMap<i64, HashSet<i64>> = HashMap::new();
-    let res = follow_model::get_all_follows(&db_pool.get().unwrap());
-    if let Ok(list) = res {
-        for item in list {
-            let inner_list = follow_map.get_mut(&item.user_id);
-            if let Some(inner_list) = inner_list {
-                inner_list.insert(item.twitter_user_id);
-            } else {
-                follow_map.insert(item.user_id, HashSet::from([item.twitter_user_id]));
-            }
-        }
-    }
-
     let ts = Arc::new(RwLock::new(TwitterSubscriber::new(
         tx,
         sub_tx_clone,
         bot.clone(),
         blacklist_map,
-        follow_map,
     )));
 
     let ts_clone = ts.clone();
