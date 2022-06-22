@@ -11,6 +11,8 @@ pub struct Follow {
     pub twitter_user_id: i64,
     pub twitter_username: String,
     pub created_at: NaiveDateTime,
+    pub follow_rt_count: i64,
+    pub block_rt_count: i64,
 }
 
 pub fn create_follow(conn: &SqliteConnection, f: Follow) -> Result<usize, anyhow::Error> {
@@ -59,4 +61,34 @@ pub fn get_all_follows(conn: &SqliteConnection) -> Result<Vec<Follow>, anyhow::E
         Ok(vec) => Ok(vec),
         Err(e) => Err(anyhow!("{:?}", e)),
     }
+}
+
+pub fn increase_block_rt_count(
+    conn: &SqliteConnection,
+    x_user_id: i64,
+    x_twitter_user_id: i64,
+) -> Result<usize, anyhow::Error> {
+    let res = diesel::update(
+        follows
+            .filter(user_id.eq(x_user_id))
+            .filter(twitter_user_id.eq(x_twitter_user_id)),
+    )
+    .set(block_rt_count.eq(block_rt_count + 1))
+    .execute(conn)?;
+    Ok(res)
+}
+
+pub fn increase_follow_rt_count(
+    conn: &SqliteConnection,
+    x_user_id: i64,
+    x_twitter_user_id: i64,
+) -> Result<usize, anyhow::Error> {
+    let res = diesel::update(
+        follows
+            .filter(user_id.eq(x_user_id))
+            .filter(twitter_user_id.eq(x_twitter_user_id)),
+    )
+    .set(follow_rt_count.eq(follow_rt_count + 1))
+    .execute(conn)?;
+    Ok(res)
 }

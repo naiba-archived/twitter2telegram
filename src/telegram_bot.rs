@@ -43,17 +43,24 @@ enum Command {
     GetTwitterAuthURL,
     #[command(description = "_twitterAuthCode_")]
     SetTwitterVerifyCode(String),
-    #[command(description = "_twitterID_ Subscribe to [Twitter ID](https://tweeterid.com)")]
-    FollowTwitterID(i64),
+    #[command(
+        description = "_twitterID fromTwitterID_ Subscribe to [Twitter ID](https://tweeterid.com)",
+        parse_with = "split"
+    )]
+    FollowTwitterID(i64, i64),
     #[command(description = "_twitterID_ Unsubscribe from Twitter ID")]
     UnfollowTwitterID(i64),
     #[command(
         description = "_blockType twitterID_ Block from Twitter ID",
         parse_with = "split"
     )]
-    BlockTwitterID { x_type: i32, x_twitter_user_id: i64 },
+    BlockTwitterID {
+        x_type: i32,
+        x_twitter_user_id: i64,
+        x_from_twitter_id: i64,
+    },
     #[command(
-        description = "_blockType twitterID_ Unblock from Twitter ID",
+        description = "_blockType twitterID fromTwitteID_  Unblock from Twitter ID",
         parse_with = "split"
     )]
     UnblockTwitterID { x_type: i32, x_twitter_user_id: i64 },
@@ -232,7 +239,7 @@ async fn command_handler(
             )
             .await?
         }
-        Command::FollowTwitterID(x_twitter_user_id) => {
+        Command::FollowTwitterID(x_twitter_user_id, x_from_twitter_user_id) => {
             if !user_pre_check().await {
                 return Ok(());
             };
@@ -252,12 +259,22 @@ async fn command_handler(
             let token: egg_mode::Token =
                 serde_json::from_str(&user.twitter_access_token.unwrap()).unwrap();
             let twitter_user = egg_mode::user::show(x_twitter_user_id as u64, &token).await?;
+
+            // 优质内容追踪计数
+            follow_model::increase_follow_rt_count(
+                &ctx.db_pool.get().unwrap(),
+                user.id,
+                x_from_twitter_user_id,
+            )?;
+
             let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
             let follow = follow_model::Follow {
                 id: None,
                 user_id: user.id,
                 twitter_user_id: x_twitter_user_id,
                 twitter_username: twitter_user.screen_name.clone(),
+                follow_rt_count: 0,
+                block_rt_count: 0,
                 created_at: NaiveDateTime::from_timestamp(now.as_secs() as i64, now.subsec_nanos()),
             };
             let res = follow_model::create_follow(&ctx.db_pool.get().unwrap(), follow.clone());
@@ -271,7 +288,7 @@ async fn command_handler(
                             .unwrap()
                             .write()
                             .await
-                            .add_follow(follow)
+                            .add_follow(follow, x_twitter_user_id)
                             .await?;
                         if token.ne("") {
                             TwitterSubscriber::subscribe(
@@ -293,6 +310,7 @@ async fn command_handler(
         Command::BlockTwitterID {
             x_type,
             x_twitter_user_id,
+            x_from_twitter_id,
         } => {
             if !user_pre_check().await {
                 return Ok(());
@@ -313,6 +331,16 @@ async fn command_handler(
             let token: egg_mode::Token =
                 serde_json::from_str(&user.twitter_access_token.unwrap()).unwrap();
             let twitter_user = egg_mode::user::show(x_twitter_user_id as u64, &token).await?;
+
+            // 劣质内容屏蔽计数
+            if x_type.eq(&2) {
+                follow_model::increase_block_rt_count(
+                    &ctx.db_pool.get().unwrap(),
+                    user.id,
+                    x_twitter_user_id,
+                )?;
+            }
+
             let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
             let block = blacklist_model::Blacklist {
                 id: None,
@@ -323,6 +351,7 @@ async fn command_handler(
                 created_at: NaiveDateTime::from_timestamp(now.as_secs() as i64, now.subsec_nanos()),
             };
             let res = blacklist_model::block_user(&ctx.db_pool.get().unwrap(), block.clone());
+
             bot.send_message(
                 message.chat.id,
                 match res {
@@ -332,7 +361,7 @@ async fn command_handler(
                             .unwrap()
                             .write()
                             .await
-                            .block(user.id, block)
+                            .block(block, x_from_twitter_id)
                             .await?;
                         format!("Added successfully, affecting {:?} records", count)
                     }

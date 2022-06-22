@@ -1,5 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
+    ops::Add,
     sync::Arc,
 };
 
@@ -42,6 +43,8 @@ pub struct TwitterSubscriber {
     blacklist_map: HashMap<i64, HashSet<(i64, i32)>>,
     follow_map: HashMap<i64, HashSet<i64>>,
     follow_to_twiiter: HashMap<i64, Vec<i64>>,
+    block_rt_count_map: HashMap<i64, HashMap<i64, i64>>,
+    follow_rt_count_map: HashMap<i64, HashMap<i64, i64>>,
 }
 
 impl TwitterSubscriber {
@@ -61,6 +64,8 @@ impl TwitterSubscriber {
             follow_map: HashMap::new(),
             token_vec: Vec::new(),
             follow_to_twiiter: HashMap::new(),
+            block_rt_count_map: HashMap::new(),
+            follow_rt_count_map: HashMap::new(),
         }
     }
 
@@ -160,7 +165,11 @@ impl TwitterSubscriber {
         }
     }
 
-    pub async fn add_follow(&mut self, f: Follow) -> Result<String, anyhow::Error> {
+    pub async fn add_follow(
+        &mut self,
+        f: Follow,
+        from_twitter_user_id: i64,
+    ) -> Result<String, anyhow::Error> {
         if self.token_vec.len().eq(&0) {
             return Err(anyhow::anyhow!("No valid Twitter token"));
         }
@@ -173,6 +182,22 @@ impl TwitterSubscriber {
         } else {
             self.follow_map
                 .insert(f.user_id, HashSet::from([f.twitter_user_id]));
+        }
+
+        // 优质内容来源计数
+        if from_twitter_user_id.gt(&0) {
+            if !self.follow_rt_count_map.contains_key(&from_twitter_user_id) {
+                self.follow_rt_count_map
+                    .insert(f.user_id, HashMap::from([(from_twitter_user_id, 1)]));
+            } else {
+                let brc = self.follow_rt_count_map.get_mut(&f.user_id).unwrap();
+                if !brc.contains_key(&from_twitter_user_id) {
+                    brc.insert(from_twitter_user_id, 1);
+                } else {
+                    let count = brc.get_mut(&from_twitter_user_id).unwrap();
+                    *count = count.add(1);
+                }
+            }
         }
 
         // 检查是否存在于全局订阅列表
@@ -249,11 +274,31 @@ impl TwitterSubscriber {
         ctx.token.clone()
     }
 
-    pub async fn block(&mut self, user_id: i64, b: Blacklist) -> Result<(), anyhow::Error> {
-        let list = self.blacklist_map.get_mut(&user_id);
+    pub async fn block(
+        &mut self,
+        b: Blacklist,
+        from_twitter_user_id: i64,
+    ) -> Result<(), anyhow::Error> {
+        // 劣质内容屏蔽计数
+        if b.type_.eq(&2) {
+            if !self.block_rt_count_map.contains_key(&from_twitter_user_id) {
+                self.block_rt_count_map
+                    .insert(b.user_id, HashMap::from([(from_twitter_user_id, 1)]));
+            } else {
+                let brc = self.block_rt_count_map.get_mut(&b.user_id).unwrap();
+                if !brc.contains_key(&from_twitter_user_id) {
+                    brc.insert(from_twitter_user_id, 1);
+                } else {
+                    let count = brc.get_mut(&from_twitter_user_id).unwrap();
+                    *count = count.add(1);
+                }
+            }
+        }
+
+        let list = self.blacklist_map.get_mut(&b.user_id);
         let item = (b.twitter_user_id, b.type_);
         if list.is_none() {
-            self.blacklist_map.insert(user_id, HashSet::from([item]));
+            self.blacklist_map.insert(b.user_id, HashSet::from([item]));
         } else {
             if list.as_ref().unwrap().contains(&item) {
                 return Ok(());
@@ -415,6 +460,17 @@ async fn get_inline_buttons(
     ts: &Arc<RwLock<TwitterSubscriber>>,
     twitter_user_id: u64,
 ) -> Vec<InlineKeyboardButton> {
+    let ts_read = ts.read().await;
+    let follow_count = match ts_read.follow_rt_count_map.get(&tg_user_id) {
+        Some(m) => m.get(&(twitter_user_id as i64)).unwrap_or(&0).clone(),
+        None => 0,
+    };
+    let block_count = match ts_read.block_rt_count_map.get(&tg_user_id) {
+        Some(m) => m.get(&(twitter_user_id as i64)).unwrap_or(&0).clone(),
+        None => 0,
+    };
+    drop(ts_read);
+
     let mut inline_buttons = Vec::new();
     if retweet_user_id > 0 {
         let ts_read = ts.read().await;
@@ -429,7 +485,7 @@ async fn get_inline_buttons(
             .contains(&(retweet_user_id as i64))
         {
             inline_buttons.push(InlineKeyboardButton::callback(
-                "👀RTer".to_string(),
+                format!("👀RTer({})", follow_count),
                 format!("/FollowTwitterID {}", retweet_user_id),
             ));
         } else {
@@ -439,7 +495,7 @@ async fn get_inline_buttons(
             ));
         }
         inline_buttons.push(InlineKeyboardButton::callback(
-            "🚫RT".to_string(),
+            format!("🚫RT({})", block_count),
             format!("/BlockTwitterID 1 {}", twitter_user_id),
         ));
         inline_buttons.push(InlineKeyboardButton::callback(
@@ -495,6 +551,9 @@ fn format_tweet(t: egg_mode::tweet::Tweet) -> Option<(u64, u64, String, String)>
         let largest_video = get_max_video_bitrate(ext_media.first().unwrap());
         video_url = largest_video.1;
     }
+
+    let screen_name_with_count = bold(&escape(&format!("{}", &user.screen_name)));
+
     Some((
         user.id,
         retweet_user_id,
@@ -502,15 +561,11 @@ fn format_tweet(t: egg_mode::tweet::Tweet) -> Option<(u64, u64, String, String)>
         match video_url {
             Some(url) => format!(
                 "{}: {} {}",
-                bold(&escape(&user.screen_name)),
+                screen_name_with_count,
                 link(&url, "🎬"),
                 escape(&t.text)
             ),
-            None => format!(
-                "{}: {}",
-                bold(&escape(&user.screen_name)),
-                link(&tweet_url, "🔗")
-            ),
+            None => format!("{}: {}", screen_name_with_count, link(&tweet_url, "🔗")),
         },
     ))
 }

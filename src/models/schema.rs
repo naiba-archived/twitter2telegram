@@ -17,6 +17,8 @@ table! {
         twitter_user_id -> BigInt,
         twitter_username -> Text,
         created_at -> Timestamp,
+        follow_rt_count -> BigInt,
+        block_rt_count -> BigInt,
     }
 }
 
