@@ -476,7 +476,7 @@ async fn get_inline_buttons(
         let ts_read = ts.read().await;
         inline_buttons.push(InlineKeyboardButton::callback(
             "🚫RTer".to_string(),
-            format!("/BlockTwitterID 2 {}", retweet_user_id),
+            format!("/BlockTwitterID 2 {} {}", retweet_user_id, twitter_user_id),
         ));
         if !ts_read
             .follow_map
@@ -486,7 +486,7 @@ async fn get_inline_buttons(
         {
             inline_buttons.push(InlineKeyboardButton::callback(
                 format!("👀RTer({})", follow_count),
-                format!("/FollowTwitterID {}", retweet_user_id),
+                format!("/FollowTwitterID {} {}", retweet_user_id, twitter_user_id),
             ));
         } else {
             inline_buttons.push(InlineKeyboardButton::callback(
@@ -496,7 +496,7 @@ async fn get_inline_buttons(
         }
         inline_buttons.push(InlineKeyboardButton::callback(
             format!("🚫RT({})", block_count),
-            format!("/BlockTwitterID 1 {}", twitter_user_id),
+            format!("/BlockTwitterID 1 {} {}", twitter_user_id, 0),
         ));
         inline_buttons.push(InlineKeyboardButton::callback(
             "❌".to_string(),
