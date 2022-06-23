@@ -51,7 +51,7 @@ enum Command {
     #[command(description = "_twitterID_ Unsubscribe from Twitter ID")]
     UnfollowTwitterID(i64),
     #[command(
-        description = "_blockType twitterID_ Block from Twitter ID",
+        description = "_blockType twitterID fromTwitteID_ Block from Twitter ID",
         parse_with = "split"
     )]
     BlockTwitterID {
@@ -60,7 +60,7 @@ enum Command {
         x_from_twitter_id: i64,
     },
     #[command(
-        description = "_blockType twitterID fromTwitteID_  Unblock from Twitter ID",
+        description = "_blockType twitterID_  Unblock from Twitter ID",
         parse_with = "split"
     )]
     UnblockTwitterID { x_type: i32, x_twitter_user_id: i64 },

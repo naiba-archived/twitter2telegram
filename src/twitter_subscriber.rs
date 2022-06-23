@@ -186,7 +186,7 @@ impl TwitterSubscriber {
 
         // 优质内容来源计数
         if from_twitter_user_id.gt(&0) {
-            if !self.follow_rt_count_map.contains_key(&from_twitter_user_id) {
+            if !self.follow_rt_count_map.contains_key(&f.user_id) {
                 self.follow_rt_count_map
                     .insert(f.user_id, HashMap::from([(from_twitter_user_id, 1)]));
             } else {
@@ -281,7 +281,7 @@ impl TwitterSubscriber {
     ) -> Result<(), anyhow::Error> {
         // 劣质内容屏蔽计数
         if b.type_.eq(&2) {
-            if !self.block_rt_count_map.contains_key(&from_twitter_user_id) {
+            if !self.block_rt_count_map.contains_key(&b.user_id) {
                 self.block_rt_count_map
                     .insert(b.user_id, HashMap::from([(from_twitter_user_id, 1)]));
             } else {
