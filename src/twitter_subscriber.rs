@@ -12,14 +12,18 @@ use teloxide::{
     adaptors::{AutoSend, DefaultParseMode},
     payloads::SendMessageSetters,
     prelude::Requester,
-    types::{InlineKeyboardButton, InlineKeyboardMarkup, UserId},
-    utils::markdown::{bold, escape, link},
+    types::{
+        InlineKeyboardButton, InlineKeyboardMarkup, InputFile, InputMedia, InputMediaAnimation,
+        InputMediaPhoto, InputMediaVideo, UserId,
+    },
+    utils::markdown::{bold, escape},
     Bot,
 };
 use tokio::sync::{
     mpsc::{Receiver, Sender},
     RwLock,
 };
+use url::Url;
 
 use crate::models::{
     blacklist_model::{self, Blacklist},
@@ -95,7 +99,7 @@ impl TwitterSubscriber {
                 StreamMessage::Tweet(t) => format_tweet(t),
                 _ => None,
             };
-            if let Some((twitter_user_id, retweet_user_id, tweet_url, msg)) = msg {
+            if let Some((twitter_user_id, retweet_user_id, tweet_url, msg, media)) = msg {
                 let ts_read = ts.read().await;
                 let users = match ts_read.follow_to_twiiter.get(&(twitter_user_id as i64)) {
                     Some(users) => users.clone(),
@@ -153,12 +157,24 @@ impl TwitterSubscriber {
                     let markup = InlineKeyboardMarkup::new(vec![
                         get_inline_buttons(tg_user_id, retweet_user_id, &ts, twitter_user_id).await,
                     ]);
+                    if !media.is_empty() {
+                        let media_group_id = tg
+                            .send_media_group(UserId(tg_user_id.clone() as u64), media.clone())
+                            .await;
+                        if let Err(e) = media_group_id {
+                            error!("telegram@{} send_media_group {:?}", &tg_user_id, e);
+                        }
+                    }
                     let res = tg
                         .send_message(UserId(tg_user_id.clone() as u64), &msg)
                         .reply_markup(markup.clone())
                         .await;
                     if res.is_err() {
-                        error!("telegram@{} {:?}", &tg_user_id, res.err().unwrap());
+                        error!(
+                            "telegram@{} send_message {:?}",
+                            &tg_user_id,
+                            res.err().unwrap()
+                        );
                     }
                 }
             }
@@ -511,8 +527,9 @@ async fn get_inline_buttons(
     inline_buttons
 }
 
-fn format_tweet(t: egg_mode::tweet::Tweet) -> Option<(u64, u64, String, String)> {
+fn format_tweet(t: egg_mode::tweet::Tweet) -> Option<(u64, u64, String, String, Vec<InputMedia>)> {
     let user = t.user.as_ref().unwrap();
+    let mut caption = user.screen_name.clone();
     let mut retweet_user_id = 0;
     let mut real_created_at = t.created_at;
     let mut tweet_url = format!(
@@ -522,6 +539,7 @@ fn format_tweet(t: egg_mode::tweet::Tweet) -> Option<(u64, u64, String, String)>
     if let Some(ts) = t.retweeted_status {
         real_created_at = ts.created_at;
         if let Some(rt) = ts.user {
+            caption = rt.screen_name.clone();
             retweet_user_id = rt.id;
             tweet_url = format!("https://twitter.com/{}/status/{:?}", &rt.screen_name, ts.id);
         }
@@ -537,37 +555,61 @@ fn format_tweet(t: egg_mode::tweet::Tweet) -> Option<(u64, u64, String, String)>
         return None;
     };
 
-    let mut video_url: Option<String> = None;
+    let mut media = Vec::new();
     let ext_media: Option<Vec<MediaEntity>> = match t.extended_entities {
         Some(ext) => Some(ext.media),
         None => t.entities.media,
     };
-    if let Some(mut ext_media) = ext_media {
-        ext_media.sort_by(|m1, m2| {
-            let m1_size = get_max_video_bitrate(m1);
-            let m2_size = get_max_video_bitrate(m2);
-            return m2_size.0.cmp(&m1_size.0);
+    if let Some(ext_media) = ext_media {
+        ext_media.iter().for_each(|m| {
+            let m_i = get_media_from_media_entity(m, &caption);
+            if let Some(m_i) = m_i {
+                media.push(m_i);
+            }
         });
-        let largest_video = get_max_video_bitrate(ext_media.first().unwrap());
-        video_url = largest_video.1;
     }
 
     let screen_name_with_count = bold(&escape(&format!("{}", &user.screen_name)));
+
+    let msg = match media.is_empty() {
+        true => t.text,
+        false => t
+            .text
+            .replace("https://t.co", "t_co")
+            .replace("https://twitter.com", "twitter_com"),
+    };
 
     Some((
         user.id,
         retweet_user_id,
         tweet_url.clone(),
-        match video_url {
-            Some(url) => format!(
-                "{}: {} {}",
-                screen_name_with_count,
-                link(&url, "🎬"),
-                escape(&t.text)
-            ),
-            None => format!("{}: {}", screen_name_with_count, link(&tweet_url, "🔗")),
-        },
+        format!("{}: {}", screen_name_with_count, escape(&msg)),
+        media,
     ))
+}
+
+fn get_media_from_media_entity(
+    m: &egg_mode::entities::MediaEntity,
+    caption: &str,
+) -> Option<InputMedia> {
+    let video_url = get_max_video_bitrate(m);
+    if let Some(url) = video_url.1 {
+        return Some(InputMedia::Video(
+            InputMediaVideo::new(InputFile::url(url.parse().unwrap())).caption(caption),
+        ));
+    }
+
+    match m.media_type {
+        egg_mode::entities::MediaType::Photo => Some(InputMedia::Photo(
+            InputMediaPhoto::new(InputFile::url(Url::parse(&m.media_url).unwrap()))
+                .caption(caption),
+        )),
+        egg_mode::entities::MediaType::Gif => Some(InputMedia::Animation(
+            InputMediaAnimation::new(InputFile::url(Url::parse(&m.media_url).unwrap()))
+                .caption(caption),
+        )),
+        _ => None,
+    }
 }
 
 fn get_max_video_bitrate(m: &egg_mode::entities::MediaEntity) -> (i32, Option<String>) {

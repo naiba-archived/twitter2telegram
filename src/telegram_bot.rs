@@ -26,10 +26,11 @@ use crate::GIT_HASH;
 #[derive(BotCommands, Clone, Debug)]
 #[command(description = "T2TBot\\#HASH: bot that retweets tweets to telegram\\.
 
-🚫RTer\\(Block retweets from this retweet's author\\)
-👀RTer\\(Follow this retweet's author\\)
-❌RT\\(Unfollow retweet's sender\\)
-❌\\(Unfollow sender\\)
+🚫RTer\\(Block author.\\)
+👀RTer\\(Follow author.\\)
+❌RT\\(Unfollow author.\\)
+🚫RT\\(Disallow retweet from sender.\\)
+❌\\(Unfollow sender.\\)
 
 blockType:
   1 - block all retweets from this user\\.
