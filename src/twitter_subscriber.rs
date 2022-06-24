@@ -167,6 +167,7 @@ impl TwitterSubscriber {
                     }
                     let res = tg
                         .send_message(UserId(tg_user_id.clone() as u64), &msg)
+                        .disable_web_page_preview(!media.is_empty())
                         .reply_markup(markup.clone())
                         .await;
                     if res.is_err() {
@@ -571,19 +572,11 @@ fn format_tweet(t: egg_mode::tweet::Tweet) -> Option<(u64, u64, String, String, 
 
     let screen_name_with_count = bold(&escape(&format!("{}", &user.screen_name)));
 
-    let msg = match media.is_empty() {
-        true => t.text,
-        false => t
-            .text
-            .replace("https://t.co", "t_co")
-            .replace("https://twitter.com", "twitter_com"),
-    };
-
     Some((
         user.id,
         retweet_user_id,
         tweet_url.clone(),
-        format!("{}: {}", screen_name_with_count, escape(&msg)),
+        format!("{}: {}", screen_name_with_count, escape(&t.text)),
         media,
     ))
 }
