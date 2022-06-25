@@ -478,14 +478,25 @@ async fn command_handler(
                 return Ok(());
             }
             let follow_vec = res.unwrap();
+            let mut msg_list: Vec<String> = Vec::new();
             let mut msg = escape("You are currently subscribed to the following accounts.\n");
-            follow_vec.iter().for_each(|f| {
-                msg.push_str(&format!(
-                    "\\* *{}* _{:?}_\n",
-                    escape(&f.twitter_username),
-                    f.twitter_user_id
-                ))
+
+            follow_vec.chunks(50).for_each(|chunk| {
+                chunk.iter().for_each(|f| {
+                    msg.push_str(&format!(
+                        "\\* {} {:?}\n",
+                        escape(&f.twitter_username),
+                        f.twitter_user_id
+                    ))
+                });
+                msg_list.push(msg.clone());
+                msg.clear();
             });
+
+            for msg in msg_list {
+                bot.send_message(message.chat.id, msg).await?;
+            }
+
             bot.send_message(message.chat.id, msg).await?
         }
         Command::ListBlockedTwitterID(x_type) => {

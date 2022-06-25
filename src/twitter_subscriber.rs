@@ -95,11 +95,11 @@ impl TwitterSubscriber {
         mut tweet_rx: Receiver<StreamMessage>,
     ) {
         while let Some(m) = tweet_rx.recv().await {
-            let msg = match m {
+            let t = match m {
                 StreamMessage::Tweet(t) => format_tweet(t),
                 _ => None,
             };
-            if let Some((twitter_user_id, retweet_user_id, tweet_url, msg, media)) = msg {
+            if let Some((twitter_user_id, retweet_user_id, tweet_url, msg, media)) = t {
                 let ts_read = ts.read().await;
                 let users = match ts_read.follow_to_twiiter.get(&(twitter_user_id as i64)) {
                     Some(users) => users.clone(),
@@ -570,15 +570,13 @@ fn format_tweet(t: egg_mode::tweet::Tweet) -> Option<(u64, u64, String, String, 
         });
     }
 
-    let screen_name_with_count = bold(&escape(&format!("{}", &user.screen_name)));
-
     Some((
         user.id,
         retweet_user_id,
         tweet_url.clone(),
         format!(
             "{}: {}{}",
-            screen_name_with_count,
+            bold(&escape(&user.screen_name)),
             escape(&t.text),
             match media.is_empty() {
                 false => "".to_string(),
