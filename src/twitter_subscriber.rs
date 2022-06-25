@@ -16,7 +16,7 @@ use teloxide::{
         InlineKeyboardButton, InlineKeyboardMarkup, InputFile, InputMedia, InputMediaAnimation,
         InputMediaPhoto, InputMediaVideo, UserId,
     },
-    utils::markdown::{bold, escape},
+    utils::markdown::{bold, escape, link},
     Bot,
 };
 use tokio::sync::{
@@ -582,7 +582,7 @@ fn format_tweet(t: egg_mode::tweet::Tweet) -> Option<(u64, u64, String, String, 
             escape(&t.text),
             match media.is_empty() {
                 false => "".to_string(),
-                true => format!(" {}", tweet_url),
+                true => format!(" {}", link(&tweet_url, "🔗")),
             }
         ),
         media,
