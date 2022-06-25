@@ -261,13 +261,6 @@ async fn command_handler(
                 serde_json::from_str(&user.twitter_access_token.unwrap()).unwrap();
             let twitter_user = egg_mode::user::show(x_twitter_user_id as u64, &token).await?;
 
-            // 优质内容追踪计数
-            follow_model::increase_follow_rt_count(
-                &ctx.db_pool.get().unwrap(),
-                user.id,
-                x_from_twitter_user_id,
-            )?;
-
             let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
             let follow = follow_model::Follow {
                 id: None,
@@ -283,6 +276,12 @@ async fn command_handler(
                 message.chat.id,
                 match res {
                     Ok(count) => {
+                        // 优质内容追踪计数
+                        follow_model::increase_follow_rt_count(
+                            &ctx.db_pool.get().unwrap(),
+                            user.id,
+                            x_from_twitter_user_id,
+                        )?;
                         let token = ctx
                             .twitter_subscriber
                             .as_ref()
@@ -333,15 +332,6 @@ async fn command_handler(
                 serde_json::from_str(&user.twitter_access_token.unwrap()).unwrap();
             let twitter_user = egg_mode::user::show(x_twitter_user_id as u64, &token).await?;
 
-            // 劣质内容屏蔽计数
-            if x_type.eq(&2) {
-                follow_model::increase_block_rt_count(
-                    &ctx.db_pool.get().unwrap(),
-                    user.id,
-                    x_twitter_user_id,
-                )?;
-            }
-
             let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
             let block = blacklist_model::Blacklist {
                 id: None,
@@ -357,6 +347,14 @@ async fn command_handler(
                 message.chat.id,
                 match res {
                     Ok(count) => {
+                        // 劣质内容屏蔽计数
+                        if x_type.eq(&2) {
+                            follow_model::increase_block_rt_count(
+                                &ctx.db_pool.get().unwrap(),
+                                user.id,
+                                x_twitter_user_id,
+                            )?;
+                        }
                         ctx.twitter_subscriber
                             .as_ref()
                             .unwrap()

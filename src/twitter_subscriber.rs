@@ -47,8 +47,8 @@ pub struct TwitterSubscriber {
     blacklist_map: HashMap<i64, HashSet<(i64, i32)>>,
     follow_map: HashMap<i64, HashSet<i64>>,
     follow_to_twiiter: HashMap<i64, Vec<i64>>,
-    block_rt_count_map: HashMap<i64, HashMap<i64, i64>>,
-    follow_rt_count_map: HashMap<i64, HashMap<i64, i64>>,
+    pub block_rt_count_map: HashMap<i64, HashMap<i64, i64>>,
+    pub follow_rt_count_map: HashMap<i64, HashMap<i64, i64>>,
 }
 
 impl TwitterSubscriber {
@@ -167,7 +167,7 @@ impl TwitterSubscriber {
                     }
                     let res = tg
                         .send_message(UserId(tg_user_id.clone() as u64), &msg)
-                        .disable_web_page_preview(!media.is_empty())
+                        .disable_web_page_preview(true)
                         .reply_markup(markup.clone())
                         .await;
                     if res.is_err() {
@@ -194,27 +194,26 @@ impl TwitterSubscriber {
         // 添加到个人订阅列表
         if let Some(list) = self.follow_map.get_mut(&f.user_id) {
             if !list.contains(&f.twitter_user_id) {
+                // 优质内容来源计数
+                if from_twitter_user_id.gt(&0) {
+                    if !self.follow_rt_count_map.contains_key(&f.user_id) {
+                        self.follow_rt_count_map
+                            .insert(f.user_id, HashMap::from([(from_twitter_user_id, 1)]));
+                    } else {
+                        let brc = self.follow_rt_count_map.get_mut(&f.user_id).unwrap();
+                        if !brc.contains_key(&from_twitter_user_id) {
+                            brc.insert(from_twitter_user_id, 1);
+                        } else {
+                            let count = brc.get_mut(&from_twitter_user_id).unwrap();
+                            *count = count.add(1);
+                        }
+                    }
+                }
                 list.insert(f.twitter_user_id);
             }
         } else {
             self.follow_map
                 .insert(f.user_id, HashSet::from([f.twitter_user_id]));
-        }
-
-        // 优质内容来源计数
-        if from_twitter_user_id.gt(&0) {
-            if !self.follow_rt_count_map.contains_key(&f.user_id) {
-                self.follow_rt_count_map
-                    .insert(f.user_id, HashMap::from([(from_twitter_user_id, 1)]));
-            } else {
-                let brc = self.follow_rt_count_map.get_mut(&f.user_id).unwrap();
-                if !brc.contains_key(&from_twitter_user_id) {
-                    brc.insert(from_twitter_user_id, 1);
-                } else {
-                    let count = brc.get_mut(&from_twitter_user_id).unwrap();
-                    *count = count.add(1);
-                }
-            }
         }
 
         // 检查是否存在于全局订阅列表
@@ -296,6 +295,17 @@ impl TwitterSubscriber {
         b: Blacklist,
         from_twitter_user_id: i64,
     ) -> Result<(), anyhow::Error> {
+        let list = self.blacklist_map.get_mut(&b.user_id);
+        let item = (b.twitter_user_id, b.type_);
+        if list.is_none() {
+            self.blacklist_map.insert(b.user_id, HashSet::from([item]));
+        } else {
+            if list.as_ref().unwrap().contains(&item) {
+                return Ok(());
+            }
+            list.unwrap().insert(item);
+        }
+
         // 劣质内容屏蔽计数
         if b.type_.eq(&2) {
             if !self.block_rt_count_map.contains_key(&b.user_id) {
@@ -312,16 +322,6 @@ impl TwitterSubscriber {
             }
         }
 
-        let list = self.blacklist_map.get_mut(&b.user_id);
-        let item = (b.twitter_user_id, b.type_);
-        if list.is_none() {
-            self.blacklist_map.insert(b.user_id, HashSet::from([item]));
-        } else {
-            if list.as_ref().unwrap().contains(&item) {
-                return Ok(());
-            }
-            list.unwrap().insert(item);
-        }
         Ok(())
     }
 
@@ -576,7 +576,15 @@ fn format_tweet(t: egg_mode::tweet::Tweet) -> Option<(u64, u64, String, String, 
         user.id,
         retweet_user_id,
         tweet_url.clone(),
-        format!("{}: {}", screen_name_with_count, escape(&t.text)),
+        format!(
+            "{}: {}{}",
+            screen_name_with_count,
+            escape(&t.text),
+            match media.is_empty() {
+                false => "".to_string(),
+                true => format!(" {}", tweet_url),
+            }
+        ),
         media,
     ))
 }
