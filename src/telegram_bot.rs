@@ -352,7 +352,7 @@ async fn command_handler(
                             follow_model::increase_block_rt_count(
                                 &ctx.db_pool.get().unwrap(),
                                 user.id,
-                                x_twitter_user_id,
+                                x_from_twitter_id,
                             )?;
                         }
                         ctx.twitter_subscriber
