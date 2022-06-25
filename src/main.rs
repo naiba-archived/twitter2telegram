@@ -196,14 +196,32 @@ async fn run_twitter_subscriber(
     // 加入监听
     let mut ts_writer2 = ts.write().await;
     for f in follow_vec {
-        ts_writer2.block_rt_count_map.insert(
-            f.user_id,
-            HashMap::from([(f.twitter_user_id, f.block_rt_count)]),
-        );
-        ts_writer2.follow_rt_count_map.insert(
-            f.user_id,
-            HashMap::from([(f.twitter_user_id, f.follow_rt_count)]),
-        );
+        if !ts_writer2.block_rt_count_map.contains_key(&f.user_id) {
+            ts_writer2.block_rt_count_map.insert(
+                f.user_id,
+                HashMap::from([(f.twitter_user_id, f.block_rt_count)]),
+            );
+        } else {
+            ts_writer2
+                .block_rt_count_map
+                .get_mut(&f.user_id)
+                .unwrap()
+                .insert(f.twitter_user_id, f.block_rt_count);
+        }
+
+        if !ts_writer2.follow_rt_count_map.contains_key(&f.user_id) {
+            ts_writer2.follow_rt_count_map.insert(
+                f.user_id,
+                HashMap::from([(f.twitter_user_id, f.follow_rt_count)]),
+            );
+        } else {
+            ts_writer2
+                .follow_rt_count_map
+                .get_mut(&f.user_id)
+                .unwrap()
+                .insert(f.twitter_user_id, f.follow_rt_count);
+        }
+
         ts_writer2.add_follow(f, 0).await.unwrap();
     }
     drop(ts_writer2);
