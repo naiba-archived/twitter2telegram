@@ -13,7 +13,7 @@ WORKDIR /bot
 COPY ./artifact/$TARGETPLATFORM/twitter2telegram ./bot
 COPY ./migrations ./migrations
 
-RUN chmoxd +x ./bot
+RUN chmod +x ./bot
 
 VOLUME ["/bot/data"]
 CMD ["/bot/bot"]
