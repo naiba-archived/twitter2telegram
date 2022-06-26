@@ -3,14 +3,10 @@ ARG TARGETPLATFORM
 ENV TZ="Asia/Shanghai"
 
 RUN export DEBIAN_FRONTEND="noninteractive" && \
-    apt update && apt install -y wget ca-certificates tzdata libsqlite3-dev perl gcc make && \
-    update-ca-certificates && \
+    apt update && apt install -y wget ca-certificates tzdata && \
+    update-ca-certificates libsqlite3-dev libssl-dev && \
     ln -fs /usr/share/zoneinfo/$TZ /etc/localtime && \
-    dpkg-reconfigure tzdata && \
-    wget https://www.openssl.org/source/openssl-1.1.1f.tar.gz && \
-    tar -xzvf openssl-1.1.1f.tar.gz && \
-    cd openssl-1.1.1f && ./config && make install && mv *.so* /lib/x86_64-linux-gnu/ && \
-    cd ../ && rm -rf openssl-1.1.1f*
+    dpkg-reconfigure tzdata
 
 WORKDIR /bot
 COPY ./artifact/$TARGETPLATFORM/twitter2telegram ./bot
