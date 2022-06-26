@@ -23,3 +23,8 @@ serde_json = "1.0"
 teloxide = {version = "0.9", features = ["auto-send", "macros", "rustls"]}
 tokio = {version = "1", features = ["full"]}
 url = "2.2.2"
+
+[dependencies.libsqlite3-sys]
+# https://github.com/diesel-rs/diesel/issues/2943
+features = ["bundled"]
+version = ">=0.17.2, <0.25.0"
