@@ -34,11 +34,11 @@ image = "ghcr.io/cross-rs/aarch64-unknown-linux-gnu:latest"
 pre-build = [
   "dpkg --add-architecture arm64",
   "apt-get update",
-  "apt-get install --assume-yes libssl-dev libssl-dev:arm64",
+  "apt-get install --assume-yes libssl-dev:arm64",
 ]
 
 [package.metadata.cross.target.x86_64-unknown-linux-gnu]
-image = "docker pull ghcr.io/cross-rs/x86_64-unknown-linux-gnu:latest"
+image = "ghcr.io/cross-rs/x86_64-unknown-linux-gnu:latest"
 pre-build = [
   "apt-get update",
   "apt-get install --assume-yes libssl-dev",
