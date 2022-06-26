@@ -1,0 +1,52 @@
+name: Cross compile
+
+on:
+  push:
+    paths-ignore:
+      - "docker-compose.yaml"
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            docker: linux/amd64
+            cross: false
+            binary: twitter2telegram
+          - target: aarch64-unknown-linux-gnu
+            docker: linux/arm64
+            cross: true
+            binary: twitter2telegram
+    steps:
+      - uses: actions/checkout@v2
+      - name: Setup cargo cache
+        uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-${{ matrix.target }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.target }}-cargo-
+      - name: install toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          target: ${{ matrix.target }}
+          override: true
+      - name: compile
+        uses: actions-rs/cargo@v1
+        with:
+          use-cross: ${{ matrix.cross }}
+          command: build
+          args: --release --target=${{ matrix.target }}
+      - name: move target
+        run: |
+          mkdir -p action-release/${{ matrix.docker }}/
+          mv target/${{ matrix.target }}/release/${{ matrix.binary }} action-release/${{ matrix.docker }}/
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
+        with:
+          path: action-release/

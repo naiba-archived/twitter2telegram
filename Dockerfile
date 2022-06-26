@@ -1,4 +1,5 @@
 FROM ubuntu:latest
+ARG TARGETPLATFORM
 ENV TZ="Asia/Shanghai"
 
 RUN export DEBIAN_FRONTEND="noninteractive" && \
@@ -12,7 +13,7 @@ RUN export DEBIAN_FRONTEND="noninteractive" && \
     cd ../ && rm -rf openssl-1.1.1f*
 
 WORKDIR /bot
-COPY ./target/release/twitter2telegram ./bot
+COPY ./artifact/$TARGETPLATFORM/twitter2telegram ./bot
 COPY ./migrations ./migrations
 
 VOLUME ["/bot/data"]
