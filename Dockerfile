@@ -10,6 +10,7 @@ RUN export DEBIAN_FRONTEND="noninteractive" && \
 
 WORKDIR /bot
 COPY ./artifact/$TARGETPLATFORM/twitter2telegram ./bot
+RUN chmod +x ./bot
 COPY ./migrations ./migrations
 
 VOLUME ["/bot/data"]
