@@ -4,7 +4,7 @@ ARG TARGETPLATFORM
 ENV TZ="Asia/Shanghai"
 
 RUN export DEBIAN_FRONTEND="noninteractive" && \
-    apt update && apt install -y wget ca-certificates tzdata libssl1.0.0 && \
+    apt update && apt install -y ca-certificates tzdata libssl1.0.0 && \
     update-ca-certificates && \
     ln -fs /usr/share/zoneinfo/$TZ /etc/localtime && \
     dpkg-reconfigure tzdata
