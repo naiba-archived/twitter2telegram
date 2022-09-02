@@ -29,6 +29,8 @@ table! {
         twitter_access_token -> Nullable<Text>,
         twitter_status -> Bool,
         created_at -> Timestamp,
+        disable_retweet -> Bool,
+        disable_text_msg -> Bool,
     }
 }
 

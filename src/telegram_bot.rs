@@ -69,6 +69,10 @@ enum Command {
     ListBlockedTwitterID(i32),
     #[command(description = "List subscribed Twitter users")]
     ListFollowedTwitterID,
+    #[command(description = "Disable retweet forwards")]
+    SetDisableRetweet(bool),
+    #[command(description = "Disable text-only msg forwards")]
+    SetDisableTextMsg(bool),
     #[command(description = "*OnlyOwner* Add a user", parse_with = "split")]
     AddUser {
         telegram_id: i64,
@@ -213,13 +217,11 @@ async fn command_handler(
             .await?;
             let user = user.unwrap();
             let token_str = serde_json::to_string(&token).unwrap();
-            let res = user_model::update_user(
+            let res = user_model::update_twitter_token(
                 &ctx.db_pool.get().unwrap(),
-                User {
-                    twitter_access_token: Some(token_str.clone()),
-                    twitter_status: true,
-                    ..user
-                },
+                user.id,
+                token_str.clone(),
+                true,
             );
             let mut ts_write = ctx.twitter_subscriber.as_ref().unwrap().write().await;
             ts_write.add_token(user.id, &token_str).await?;
@@ -556,19 +558,23 @@ async fn command_handler(
                 return Ok(());
             }
             let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
-            let res = user_model::create_user(
-                &ctx.db_pool.get().unwrap(),
-                User {
-                    id: telegram_id,
-                    label: custom_label.clone(),
-                    twitter_access_token: None,
-                    twitter_status: false,
-                    created_at: NaiveDateTime::from_timestamp(
-                        now.as_secs() as i64,
-                        now.subsec_nanos(),
-                    ),
-                },
-            );
+
+            let user = User {
+                id: telegram_id,
+                label: custom_label.clone(),
+                twitter_access_token: None,
+                twitter_status: false,
+                created_at: NaiveDateTime::from_timestamp(now.as_secs() as i64, now.subsec_nanos()),
+                disable_retweet: false,
+                disable_text_msg: false,
+            };
+            let res = user_model::create_user(&ctx.db_pool.get().unwrap(), user.clone());
+
+            if res.is_ok() {
+                let mut ts_write = ctx.twitter_subscriber.as_ref().unwrap().write().await;
+                ts_write.user_info.insert(user.id, user);
+            }
+
             bot.send_message(
                 message.chat.id,
                 format!(
@@ -586,6 +592,50 @@ async fn command_handler(
                 ),
             )
             .await?
+        }
+        Command::SetDisableRetweet(disable) => {
+            if !user_pre_check().await {
+                return Ok(());
+            };
+            let user = user.unwrap();
+            let res =
+                user_model::update_disable_retweet(&ctx.db_pool.get().unwrap(), user.id, disable);
+            if res.is_err() {
+                bot.send_message(message.chat.id, format!("Failure, error {:?}", res.err()))
+                    .await?
+            } else {
+                let mut user = user.clone();
+                user.disable_retweet = disable;
+                let mut ts_write = ctx.twitter_subscriber.as_ref().unwrap().write().await;
+                ts_write.user_info.insert(user.id, user);
+                bot.send_message(
+                    message.chat.id,
+                    format!("Success, affecting {:?} Records", res.unwrap()),
+                )
+                .await?
+            }
+        }
+        Command::SetDisableTextMsg(disable) => {
+            if !user_pre_check().await {
+                return Ok(());
+            };
+            let user = user.unwrap();
+            let res =
+                user_model::update_disable_text_msg(&ctx.db_pool.get().unwrap(), user.id, disable);
+            if res.is_err() {
+                bot.send_message(message.chat.id, format!("Failure, error {:?}", res.err()))
+                    .await?
+            } else {
+                let mut user = user.clone();
+                user.disable_retweet = disable;
+                let mut ts_write = ctx.twitter_subscriber.as_ref().unwrap().write().await;
+                ts_write.user_info.insert(user.id, user);
+                bot.send_message(
+                    message.chat.id,
+                    format!("Success, affecting {:?} Records", res.unwrap()),
+                )
+                .await?
+            }
         }
     };
     Ok(())

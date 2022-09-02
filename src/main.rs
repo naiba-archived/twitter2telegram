@@ -106,11 +106,18 @@ async fn main() {
         }
     }
 
+    // 取到所有 twitter token 有效的用户
+    let user_vec = users
+        .filter(twitter_status.eq(true))
+        .load::<User>(&db_pool.get().unwrap())
+        .unwrap();
+
     let ts = Arc::new(RwLock::new(TwitterSubscriber::new(
         tx,
         sub_tx_clone,
         bot.clone(),
         blacklist_map,
+        &user_vec,
     )));
 
     let ts_clone = ts.clone();
@@ -123,7 +130,7 @@ async fn main() {
     let sub_tx_clone = sub_tx.clone();
     let bot_clone = bot.clone();
     tokio::spawn(async {
-        run_twitter_subscriber(bot_clone, sub_tx_clone, ts_clone, db_pool).await;
+        run_twitter_subscriber(bot_clone, sub_tx_clone, ts_clone, db_pool, user_vec).await;
     });
 
     let ts_clone = ts.clone();
@@ -150,12 +157,8 @@ async fn run_twitter_subscriber(
     sub_tx: Sender<String>,
     ts: Arc<RwLock<TwitterSubscriber>>,
     db_pool: DbPool,
+    user_vec: Vec<User>,
 ) {
-    // 取到所有 twitter token 有效的用户
-    let user_vec = users
-        .filter(twitter_status.eq(true))
-        .load::<User>(&db_pool.get().unwrap())
-        .unwrap();
     let mut valid_user_id_vec: Vec<i64> = Vec::new();
     let mut ts_writer = ts.write().await;
     for u in &user_vec {
@@ -165,12 +168,11 @@ async fn run_twitter_subscriber(
         {
             error!("add twitter token: {:?}", e);
             if e.to_string().contains("expired") {
-                user_model::update_user(
+                user_model::update_twitter_token(
                     &db_pool.get().unwrap(),
-                    User {
-                        twitter_status: false,
-                        ..u.clone()
-                    },
+                    u.id,
+                    "".to_string(),
+                    false,
                 )
                 .unwrap();
                 let res = tg_bot

@@ -28,6 +28,7 @@ use url::Url;
 use crate::models::{
     blacklist_model::{self, Blacklist},
     follow_model::Follow,
+    user_model::User,
 };
 
 struct TwitterTokenContext {
@@ -49,6 +50,7 @@ pub struct TwitterSubscriber {
     follow_to_twiiter: HashMap<i64, Vec<i64>>,
     pub block_rt_count_map: HashMap<i64, HashMap<i64, i64>>,
     pub follow_rt_count_map: HashMap<i64, HashMap<i64, i64>>,
+    pub user_info: HashMap<i64, User>,
 }
 
 impl TwitterSubscriber {
@@ -57,7 +59,12 @@ impl TwitterSubscriber {
         subscribe_tx: Sender<String>,
         tg_bot: AutoSend<DefaultParseMode<Bot>>,
         blacklist_map: HashMap<i64, HashSet<(i64, i32)>>,
+        users: &Vec<User>,
     ) -> Self {
+        let user_info = users.iter().fold(HashMap::new(), |mut acc, user| {
+            acc.insert(user.id, user.clone());
+            acc
+        });
         TwitterSubscriber {
             tg_bot,
             tweet_tx,
@@ -70,6 +77,7 @@ impl TwitterSubscriber {
             follow_to_twiiter: HashMap::new(),
             block_rt_count_map: HashMap::new(),
             follow_rt_count_map: HashMap::new(),
+            user_info,
         }
     }
 
@@ -111,6 +119,16 @@ impl TwitterSubscriber {
                 }
                 let mut tg_user_to_send = Vec::new();
                 for tg_user_id in users {
+                    if let Some(u) = ts_read.user_info.get(&tg_user_id) {
+                        // 检查是否禁止推送转发消息
+                        if u.disable_retweet && retweet_user_id > 0 {
+                            continue;
+                        }
+                        // 检查是否禁止纯文本消息
+                        if u.disable_text_msg && media.is_empty() {
+                            continue;
+                        }
+                    }
                     // 检查重复推送记录
                     let cache_key = format!(
                         "{:x}",
