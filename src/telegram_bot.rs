@@ -71,7 +71,7 @@ enum Command {
     ListFollowedTwitterID,
     #[command(description = "Disable retweet forwards")]
     SetDisableRetweet(bool),
-    #[command(description = "Disable text-only msg forwards")]
+    #[command(description = "Disable text\\-only msg forwards")]
     SetDisableTextMsg(bool),
     #[command(description = "*OnlyOwner* Add a user", parse_with = "split")]
     AddUser {
