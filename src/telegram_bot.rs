@@ -627,7 +627,7 @@ async fn command_handler(
                     .await?
             } else {
                 let mut user = user.clone();
-                user.disable_retweet = disable;
+                user.disable_text_msg = disable;
                 let mut ts_write = ctx.twitter_subscriber.as_ref().unwrap().write().await;
                 ts_write.user_info.insert(user.id, user);
                 bot.send_message(
