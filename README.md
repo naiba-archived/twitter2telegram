@@ -6,6 +6,19 @@ Forward tweets to telegram. (tweets from 3 days ago will be ignored)
 |------|------|
 |![menu](https://s1.ax1x.com/2022/04/09/LP568f.png)|![tweet](https://s1.ax1x.com/2022/04/09/LPI9G6.png)|
 
+## Commands and Symbols
+
+- 🚫RTer: If `a` retweeted `b`'s tweet, block `b`'s tweet.
+- 👀RTer: If `a` retweeted `b`'s tweet, follow `b`'s future tweets.
+- ❌RT: Unfollow `b` if `a` retweeted `b`'s tweet and `b` is already being followed.
+- 🚫RT: Disable all tweets retweeted by `a` if `a` retweeted `b`.
+- ❌: If `a` posted a tweet, ze unfollows `a`.
+
+**Block Commands Parameter** `blockType`:
+
+- 1 \- Block all retweets from this user.
+- 2 \- Block all tweets from this user.
+
 ## Usage
 
 1. choose a folder to run your bot, like `mkdir some_bot && cd some_bot`
