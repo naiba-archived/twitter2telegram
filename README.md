@@ -8,16 +8,16 @@ Forward tweets to telegram. (tweets from 3 days ago will be ignored)
 
 ## Commands and Symbols
 
-- 🚫RTer: If `a` retweeted `b`'s tweet, block `b`'s tweet.
-- 👀RTer: If `a` retweeted `b`'s tweet, follow `b`'s future tweets.
-- ❌RT: Unfollow `b` if `a` retweeted `b`'s tweet and `b` is already being followed.
-- 🚫RT: Disable all tweets retweeted by `a` if `a` retweeted `b`.
-- ❌: If `a` posted a tweet, ze unfollows `a`.
+- **🚫RTer**: If `a` retweeted `b`'s tweet, block `b`'s tweet.
+- **👀RTer**: If `a` retweeted `b`'s tweet, follow `b`'s future tweets.
+- **❌RT**: Unfollow `b` if `a` retweeted `b`'s tweet and `b` is already being followed.
+- **🚫RT**: Disable all tweets retweeted by `a` if `a` retweeted `b`.
+- **❌**: Unfollow `a` if `a` posted the tweet.
 
 **Block Commands Parameter** `blockType`:
 
-- 1 \- Block all retweets from this user.
-- 2 \- Block all tweets from this user.
+- **1** \- Block all retweets from this user.
+- **2** \- Block all tweets from this user.
 
 ## Usage
 
