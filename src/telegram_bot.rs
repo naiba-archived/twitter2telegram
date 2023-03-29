@@ -261,7 +261,11 @@ async fn command_handler(
                 twitter_username: twitter_user.screen_name.clone(),
                 follow_rt_count: 0,
                 block_rt_count: 0,
-                created_at: NaiveDateTime::from_timestamp(now.as_secs() as i64, now.subsec_nanos()),
+                created_at: NaiveDateTime::from_timestamp_opt(
+                    now.as_secs() as i64,
+                    now.subsec_nanos(),
+                )
+                .unwrap(),
             };
             let res = follow_model::create_follow(&ctx.db_pool.get().unwrap(), follow.clone());
             bot.send_message(
@@ -331,7 +335,11 @@ async fn command_handler(
                 twitter_user_id: x_twitter_user_id,
                 type_: x_type,
                 twitter_username: twitter_user.screen_name.clone(),
-                created_at: NaiveDateTime::from_timestamp(now.as_secs() as i64, now.subsec_nanos()),
+                created_at: NaiveDateTime::from_timestamp_opt(
+                    now.as_secs() as i64,
+                    now.subsec_nanos(),
+                )
+                .unwrap(),
             };
             let res = blacklist_model::block_user(&ctx.db_pool.get().unwrap(), block.clone());
 
@@ -554,7 +562,11 @@ async fn command_handler(
                 label: custom_label.clone(),
                 twitter_access_token: None,
                 twitter_status: false,
-                created_at: NaiveDateTime::from_timestamp(now.as_secs() as i64, now.subsec_nanos()),
+                created_at: NaiveDateTime::from_timestamp_opt(
+                    now.as_secs() as i64,
+                    now.subsec_nanos(),
+                )
+                .unwrap(),
                 disable_retweet: false,
                 disable_text_msg: false,
             };
